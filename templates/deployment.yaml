@@ -29,6 +29,17 @@ spec:
                     operator: In
                     values:
                       - general
+            # Temporary (2026-10-19): node big intermittently drops cross-node
+            # pod traffic and DNS while reporting Ready. Soft steer only, so it
+            # still schedules there if that is the only option. Remove once the
+            # node is fixed.
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - big
       containers:
         - name: nginx
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
