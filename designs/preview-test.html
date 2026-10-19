@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PR preview test</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1f;--muted:#5f6368;--line:#d9d6cf;--panel:#f1efe9;--ok:#1f7a4d}
+@media (prefers-color-scheme:dark){:root{--bg:#141517;--fg:#e6e6e3;--muted:#a3a3a0;--line:#34363b;--panel:#1c1e22;--ok:#5cc28e}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,sans-serif}
+main{max-width:40rem;margin:0 auto;padding:3rem 1.5rem}
+h1{font-size:1.6rem;margin:0 0 .4rem}
+p{color:var(--muted)}
+.card{border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:0 8px 8px 0;background:var(--panel);padding:1rem 1.2rem;margin:1.2rem 0}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.9em}
+</style>
+</head>
+<body>
+<main>
+  <h1>Preview pipeline works</h1>
+  <p>This file exists only on a branch. If you can read it at
+     <code>status-&lt;PR number&gt;.john2143.com/preview-test.html</code>, the
+     ApplicationSet rendered this commit into its own namespace.</p>
+  <div class="card"><strong>Nothing here is deployed to the gallery.</strong>
+    <p>The gallery tracks <code>main</code>; this page exists only while the PR is open.</p></div>
+</main>
+</body>
+</html>
