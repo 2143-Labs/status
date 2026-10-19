@@ -1,0 +1,12 @@
+# Our own nginx.conf instead of the image default: one worker, no daemon
+# surprises, everything writable under /tmp.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: status-design-nginx
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: status-design
+data:
+  nginx.conf: |
+{{ .Files.Get "files/nginx.conf" | indent 4 }}
