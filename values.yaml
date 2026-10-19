@@ -1,0 +1,22 @@
+# Namespace the page runs in. Previews get status-pr-<N>; the gallery uses status-design.
+namespace: status-design
+
+# Hostname served through shared-gateway's *.john2143.com listener.
+# The wildcard certificate already covers it, so no certificate work is needed.
+host: status.john2143.com
+
+# Unique name for the HTTPRoute. It lives in `default` because Traefik
+# ExtensionRef middlewares only resolve in the route's own namespace.
+routeName: status-design
+
+image:
+  repository: nginxinc/nginx-unprivileged
+  tag: "1.27-alpine"
+
+resources:
+  requests:
+    cpu: 5m
+    memory: 16Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi

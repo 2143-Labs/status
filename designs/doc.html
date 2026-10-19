@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2143 Labs Status</title>
+<style>
+:root{
+  --bg:#fbfaf7;--fg:#1d1d1f;--muted:#5f6368;--line:#d9d6cf;--panel:#f1efe9;--code:#ece9e1;
+  --accent:#2457c5;--ok:#1f7a4d;--warn:#9a5800;--bad:#b3261e;--info:#5b3fb0;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#141517;--fg:#e6e6e3;--muted:#a3a3a0;--line:#34363b;--panel:#1c1e22;--code:#23262b;
+  --accent:#7aa2ff;--ok:#5cc28e;--warn:#e0a34a;--bad:#f2766d;--info:#b49cff;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:72rem;margin:0 auto;padding:2.2rem 1.5rem 5rem}
+h1{font-size:1.9rem;line-height:1.2;margin:0 0 .3rem}
+h2{font-size:1.35rem;margin:2.6rem 0 .7rem;padding-top:.5rem;border-top:1px solid var(--line)}
+p,li{max-width:62rem}
+a{color:var(--accent)}
+code{font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:.88em;background:var(--code);padding:.08em .35em;border-radius:4px}
+.meta{color:var(--muted);font-size:.95rem;margin-bottom:1.2rem}
+.small{font-size:.9rem;color:var(--muted)}
+.callout{border-left:4px solid var(--accent);background:var(--panel);padding:.8rem 1rem;border-radius:0 8px 8px 0;margin:1rem 0}
+.callout.ok{border-color:var(--ok)}.callout.warn{border-color:var(--warn)}
+.callout>:first-child{margin-top:0}.callout>:last-child{margin-bottom:0}
+.pill{display:inline-block;font-size:.75rem;font-weight:600;letter-spacing:.02em;padding:.05rem .5rem;border-radius:999px;border:1px solid currentColor;white-space:nowrap;vertical-align:.1em}
+.pill.ok{color:var(--ok)}.pill.warn{color:var(--warn)}.pill.bad{color:var(--bad)}.pill.muted{color:var(--muted)}.pill.info{color:var(--info)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:1rem;margin:1rem 0}
+.card{border:1px solid var(--line);border-radius:10px;padding:.9rem 1rem;background:var(--panel)}
+.card h4{margin:0 0 .35rem;font-size:1rem}
+.card p{margin:.2rem 0;font-size:.95rem}
+.card .big{font-size:1.6rem;font-weight:700;line-height:1.2}
+table{border-collapse:collapse;width:100%;margin:.6rem 0 1.2rem;font-size:.93rem}
+th,td{border:1px solid var(--line);padding:.45rem .6rem;vertical-align:top;text-align:left}
+th{background:var(--panel);font-weight:600}
+tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--panel) 45%,transparent)}
+.tw{overflow-x:auto;max-width:100%}
+details{border:1px solid var(--line);border-radius:10px;padding:.2rem 1rem;margin:.7rem 0;background:var(--bg)}
+details[open]{padding-bottom:.8rem}
+summary{cursor:pointer;font-weight:600;padding:.55rem 0;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+summary .count{margin-left:auto;font-weight:400;color:var(--muted);font-size:.88rem}
+details .tw{margin-top:.2rem}
+details table{margin:.2rem 0 .4rem}
+.strip{position:relative;height:18px;border-radius:3px;min-width:150px;background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--ok) 78%,transparent) 0 3px,transparent 3px 4px)}
+.strip .day{position:absolute;top:0;bottom:0;width:1%;border-radius:2px}
+.strip .day.warn{background:var(--warn)}.strip .day.bad{background:var(--bad)}
+.axis{display:flex;justify-content:space-between;color:var(--muted);font-size:.75rem;margin-top:.1rem}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+footer{margin-top:3rem;border-top:1px solid var(--line);padding-top:.8rem;color:var(--muted);font-size:.88rem;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+@media (max-width:640px){
+  .card .big{font-size:1.35rem}
+  summary{font-size:.95rem}
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>2143 Labs Status</h1>
+  <p class="meta">Design preview · sample data · 2026-10-19 11:20 UTC · monitored from the status host and pite</p>
+
+  <div class="callout ok">
+    <p><strong>All monitored services are operational.</strong> One maintenance window and two resolved
+    incidents in the last 30 days. Edge rollout has not started, so no name is served through an edge yet.</p>
+  </div>
+
+  <div class="grid">
+    <div class="card"><h4>Services</h4><p class="big">12 / 12</p><p>public names answering</p></div>
+    <div class="card"><h4>Home cluster</h4><p class="big">6 / 6</p><p>nodes Ready · 0 active alerts</p></div>
+    <div class="card"><h4>History</h4><p class="big">90 d</p><p>hourly rollups · outages to the second</p></div>
+    <div class="card"><h4>Last check</h4><p class="big">4 s</p><p>external probe · pite report 6 s ago</p></div>
+  </div>
+
+  <h2>Components</h2>
+  <p class="small">Open a group. Each row carries state, uptime and the last 90 days; hover a day for its date.
+    “Not reporting” means the source went quiet — it is never counted as up or down.</p>
+
+  <details open>
+    <summary>Home cluster <span class="pill ok">✓ operational</span><span class="count">6 nodes · 4 VMs</span></summary>
+    <div class="tw"><table>
+      <thead><tr><th>Component</th><th>State</th><th>7 d</th><th>30 d</th><th>90 d</th><th>Detail</th><th>Last 90 days</th></tr></thead>
+      <tbody>
+        <tr><td>closet</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="small">server · etcd · load 2.1</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>arch</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="small">server · etcd · RAM 84 %</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>nas</td><td><span class="pill warn">▲ degraded</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="small">server · RAM 91 % · busy, not broken</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>office · pite · big</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="small">agents · pods healthy</td><td><div class="strip"><i class="day warn" style="left:6.8%"></i></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>support VMs</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="small">github · mirror · secu · vpin</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+      </tbody>
+    </table></div>
+  </details>
+
+  <details open>
+    <summary>Home services <span class="pill ok">✓ operational</span><span class="count">8 shown of 12</span></summary>
+    <div class="tw"><table>
+      <thead><tr><th>Service</th><th>State</th><th>7 d</th><th>30 d</th><th>90 d</th><th>Latency</th><th>Last 90 days</th></tr></thead>
+      <tbody>
+        <tr><td>john2143.com</td><td><span class="pill ok">✓ up</span></td><td class="num">95.4 %</td><td class="num">98.9 %</td><td class="num">99.6 %</td><td class="num">127 ms</td><td><div class="strip"><i class="day bad" style="left:8.5%"></i><i class="day bad" style="left:9.6%"></i></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>files.john2143.com</td><td><span class="pill ok">✓ up</span></td><td class="num">95.4 %</td><td class="num">98.9 %</td><td class="num">99.6 %</td><td class="num">22 ms</td><td><div class="strip"><i class="day bad" style="left:8.5%"></i><i class="day bad" style="left:9.6%"></i></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>au.2143.me</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">99.9 %</td><td class="num">99.90 %</td><td class="num">68 ms</td><td><div class="strip"><i class="day warn" style="left:9.8%"></i></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>images.2143.me</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="num">75 ms</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>chat.2143.me · matrix.2143.me</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="num">91 ms</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>tasks.2143.me</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="num">88 ms</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>llm.2143.me</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="num">102 ms</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>pvp.john2143.com</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="num">96 ms</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+      </tbody>
+    </table></div>
+  </details>
+
+  <details>
+    <summary>DigitalOcean <span class="pill ok">✓ operational</span><span class="count">10 components</span></summary>
+    <div class="tw"><table>
+      <thead><tr><th>Component</th><th>State</th><th>7 d</th><th>30 d</th><th>90 d</th><th>Detail</th><th>Last 90 days</th></tr></thead>
+      <tbody>
+        <tr><td>2143.me</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="num">221 ms</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>i.2143.me</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="num">75 ms</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>labs.2143.me</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="num">180 ms</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>openfront.pro · api</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="num">240 ms</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>relays: Tor · DERP · exit</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="small">process up</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+      </tbody>
+    </table></div>
+  </details>
+
+  <details>
+    <summary>Client sites <span class="pill ok">✓ operational</span><span class="count">5 sites</span></summary>
+    <div class="tw"><table>
+      <thead><tr><th>Site</th><th>State</th><th>7 d</th><th>30 d</th><th>90 d</th><th>Hosted</th><th>Last 90 days</th></tr></thead>
+      <tbody>
+        <tr><td>aross.studio</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="small">home</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>balabusta.homes</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="small">home</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>chess.dsstar.us</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="small">home</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+        <tr><td>anni.2143.me · mm.b.hero.rehab</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td><td class="small">home</td><td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+      </tbody>
+    </table></div>
+  </details>
+
+  <details>
+    <summary>Edge slots <span class="pill muted">◌ planned</span><span class="count">0 of 2 deployed</span></summary>
+    <div class="tw"><table>
+      <thead><tr><th>Slot</th><th>State</th><th>7 d</th><th>30 d</th><th>90 d</th><th>Detail</th><th>Last 90 days</th></tr></thead>
+      <tbody>
+        <tr><td>s1 · Hetzner</td><td><span class="pill muted">◌ planned</span></td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="small">Talos · L4 · WireGuard</td><td><div class="strip" style="opacity:.25"></div></td></tr>
+        <tr><td>s2 · DigitalOcean</td><td><span class="pill muted">◌ planned</span></td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="small">identical render</td><td><div class="strip" style="opacity:.25"></div></td></tr>
+      </tbody>
+    </table></div>
+  </details>
+
+  <h2>Drills — last verified</h2>
+  <div class="tw">
+  <table>
+    <thead><tr><th>Drill</th><th>Target</th><th>Last result</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><td>Home stops reporting</td><td>shows “not reporting” within 3 min, page stays up</td><td><span class="pill ok">✓ 2 m 10 s</span></td><td class="num">2026-10-18</td></tr>
+      <tr><td>Restore history from snapshot</td><td>lose at most one day</td><td><span class="pill ok">✓ 24 h</span></td><td class="num">2026-10-18</td></tr>
+      <tr><td>TLS renewal</td><td>no lapse</td><td><span class="pill ok">✓ 62 d left</span></td><td class="num">2026-10-19</td></tr>
+      <tr><td>Edge slot destroyed</td><td>0 failed requests with two live</td><td><span class="pill muted">◌ no edges yet</span></td><td class="num">—</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Incidents</h2>
+  <div class="tw">
+  <table>
+    <thead><tr><th>When (UTC)</th><th>What</th><th>Duration</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td class="num">2026-10-16 14:56 → 18:10</td><td>john2143.com and files.john2143.com unreachable; Traefik HTTPS probe timed out</td><td class="num">3 h 14 m</td><td><span class="pill ok">resolved</span></td></tr>
+      <tr><td class="num">2026-10-15 17:27 → 22:23</td><td>same two hosts, same failure mode</td><td class="num">4 h 56 m</td><td><span class="pill ok">resolved</span></td></tr>
+      <tr><td class="num">2026-10-14 19:06</td><td>pite container replaced during a rebuild; history unaffected</td><td class="num">6 m</td><td><span class="pill info">maintenance</span></td></tr>
+      <tr><td class="num">2026-10-10 12:05 → 14:15</td><td>au.2143.me sign-in blank on cold loads; rate limit too tight</td><td class="num">2 h 10 m</td><td><span class="pill ok">resolved</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>How this page works</h2>
+  <div class="tw">
+  <table>
+    <thead><tr><th>Piece</th><th>Today</th><th>Target</th></tr></thead>
+    <tbody>
+      <tr><td>Hosting</td><td>home nginx on pite, behind Traefik and Anubis</td><td>one small droplet (Caddy + statusd)</td></tr>
+      <tr><td>Checks</td><td>blackbox on pite, from the LAN</td><td>same checks from outside, plus pite's view</td></tr>
+      <tr><td>History</td><td>none; Mimir reads are broken</td><td>SQLite: hourly rollups, exact outages, 90 d+</td></tr>
+      <tr><td>Home telemetry</td><td>the page scrapes Prometheus</td><td>pite pushes every 30 s; silence reads “not reporting”</td></tr>
+      <tr><td>Public path</td><td>DNS → home WAN</td><td>DNS → droplet, later → edge slots</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <footer>
+    <span>Design preview — sample data, not live.</span>
+    <span>2143 Labs · no scripts, no trackers</span>
+  </footer>
+</main>
+</body>
+</html>

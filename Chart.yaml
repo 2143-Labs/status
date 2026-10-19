@@ -1,0 +1,6 @@
+apiVersion: v2
+name: status-design
+description: Static status-page designs served from a ConfigMap. One release per PR preview, one for the gallery.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

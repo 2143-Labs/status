@@ -1,0 +1,39 @@
+# Lives in `default` so the class-A gate filters resolve (Traefik ExtensionRef
+# middlewares are namespace-local). The backend is in the release namespace,
+# allowed by the ReferenceGrant next to this file.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ .Values.routeName }}
+  namespace: default
+spec:
+  parentRefs:
+    - name: shared-gateway
+      sectionName: john2143-wildcard-https
+  hostnames:
+    - "{{ .Values.host }}"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: public-rate-limit
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: public-inflight-limit
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: crowdsec-bouncer
+      backendRefs:
+        - name: status-design
+          namespace: {{ .Values.namespace }}
+          port: 80

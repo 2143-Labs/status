@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2143 Labs Status — map</title>
+<style>
+:root{
+  --bg:#fbfaf7;--fg:#1d1d1f;--muted:#5f6368;--line:#d9d6cf;--panel:#f1efe9;--code:#ece9e1;
+  --accent:#2457c5;--ok:#1f7a4d;--warn:#9a5800;--bad:#b3261e;--info:#5b3fb0;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#141517;--fg:#e6e6e3;--muted:#a3a3a0;--line:#34363b;--panel:#1c1e22;--code:#23262b;
+  --accent:#7aa2ff;--ok:#5cc28e;--warn:#e0a34a;--bad:#f2766d;--info:#b49cff;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:72rem;margin:0 auto;padding:2.2rem 1.5rem 5rem}
+h1{font-size:1.9rem;line-height:1.2;margin:0 0 .3rem}
+h2{font-size:1.35rem;margin:2.6rem 0 .7rem;padding-top:.5rem;border-top:1px solid var(--line)}
+p,li{max-width:62rem}
+a{color:var(--accent)}
+code{font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:.88em;background:var(--code);padding:.08em .35em;border-radius:4px}
+.meta{color:var(--muted);font-size:.95rem;margin-bottom:1.2rem}
+.small{font-size:.9rem;color:var(--muted)}
+.callout{border-left:4px solid var(--accent);background:var(--panel);padding:.8rem 1rem;border-radius:0 8px 8px 0;margin:1rem 0}
+.callout.ok{border-color:var(--ok)}
+.callout>:first-child{margin-top:0}.callout>:last-child{margin-bottom:0}
+.pill{display:inline-block;font-size:.75rem;font-weight:600;letter-spacing:.02em;padding:.05rem .5rem;border-radius:999px;border:1px solid currentColor;white-space:nowrap;vertical-align:.1em}
+.pill.ok{color:var(--ok)}.pill.warn{color:var(--warn)}.pill.bad{color:var(--bad)}.pill.muted{color:var(--muted)}.pill.info{color:var(--info)}
+table{border-collapse:collapse;width:100%;margin:.6rem 0 1.2rem;font-size:.93rem}
+.tw{overflow-x:auto;max-width:100%}
+th,td{border:1px solid var(--line);padding:.45rem .6rem;vertical-align:top;text-align:left}
+th{background:var(--panel);font-weight:600}
+tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--panel) 45%,transparent)}
+figure{margin:1.2rem 0}
+figcaption{color:var(--muted);font-size:.9rem;margin-top:.5rem;max-width:62rem}
+svg.diagram{width:100%;height:auto;display:block}
+svg .box{fill:var(--panel);stroke:var(--line);stroke-width:1.5}
+svg .box.edge{stroke:var(--accent)}
+svg .box.home{fill:none;stroke:var(--ok);stroke-dasharray:6 4}
+svg .box.host{stroke:var(--accent);stroke-width:2}
+svg .box.planned{stroke:var(--muted);stroke-dasharray:4 4;fill:none}
+svg .box.sub{fill:var(--bg)}
+svg text{fill:var(--fg);font:13px system-ui,sans-serif}
+svg text.title{font-weight:700;font-size:14px}
+svg text.muted{fill:var(--muted);font-size:12px}
+svg text.ok{fill:var(--ok);font-weight:600;font-size:12px}
+svg text.plan{fill:var(--muted);font-size:12px}
+svg .wire{stroke:var(--fg);stroke-width:1.6;fill:none}
+svg .wg{stroke:var(--ok);stroke-width:2;stroke-dasharray:7 5;fill:none}
+svg .report{stroke:var(--info);stroke-width:2;stroke-dasharray:2 4;fill:none}
+svg .arrowhead{fill:var(--fg)}svg .arrowhead.wg{fill:var(--ok)}svg .arrowhead.report{fill:var(--info)}svg .arrowhead.plan{fill:var(--muted)}
+.strip{position:relative;height:20px;border-radius:3px;min-width:180px;background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--ok) 78%,transparent) 0 3px,transparent 3px 4px)}
+.strip .day{position:absolute;top:0;bottom:0;width:.9%;border-radius:2px}
+.strip .day.warn{background:var(--warn)}.strip .day.bad{background:var(--bad)}
+.axis{display:flex;justify-content:space-between;color:var(--muted);font-size:.78rem;margin-top:.15rem}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.cards{display:none}
+@media (max-width:900px){
+  svg.diagram{display:none}
+  .cards{display:grid;gap:.6rem;margin:1rem 0}
+}
+.card{border:1px solid var(--line);border-radius:10px;padding:.75rem .9rem;background:var(--panel)}
+.card.home{border:1px dashed var(--ok);background:none}
+.card.planned{border-style:dashed;border-color:var(--muted);background:none}
+.card h4{margin:0 0 .3rem;font-size:.98rem}
+.card p{margin:.15rem 0;font-size:.9rem;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:1.1rem;align-items:center;font-size:.88rem;color:var(--muted);margin:.6rem 0 0}
+.legend span{display:inline-flex;align-items:center;gap:.45rem}
+.swatch{display:inline-block;width:34px;height:0;border-top:2px solid var(--fg)}
+.swatch.wg{border-top:2px dashed var(--ok)}
+.swatch.report{border-top:2px dotted var(--info)}
+footer{margin-top:3rem;border-top:1px solid var(--line);padding-top:.8rem;color:var(--muted);font-size:.88rem;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<main>
+  <h1>2143 Labs Status</h1>
+  <p class="meta">Design preview · sample data · 2026-10-19 11:20 UTC · monitors: status host (planned) and pite</p>
+
+  <div class="callout ok">
+    <p><strong>All monitored services are operational.</strong> One maintenance window in the last 30 days.
+    <span class="pill muted">edges: planned</span></p>
+  </div>
+
+  <figure>
+    <svg class="diagram" viewBox="0 0 1000 580" role="img"
+         aria-label="Monitoring map: the status host probes public services every 30 seconds and stores history in SQLite; pite reports home cluster state to it every 30 seconds; edge slots are planned and will front home services with WireGuard.">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="arrowhead"/>
+        </marker>
+        <marker id="arrwg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="arrowhead wg"/>
+        </marker>
+        <marker id="arrrep" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="arrowhead report"/>
+        </marker>
+        <marker id="arrplan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="arrowhead plan"/>
+        </marker>
+      </defs>
+
+      <!-- visitors -->
+      <rect x="350" y="6" width="300" height="44" rx="22" class="box"/>
+      <text x="500" y="34" text-anchor="middle" class="title">Visitors — HTTPS</text>
+      <text x="500" y="64" text-anchor="middle" class="muted">one page · 30 s refresh · works without JavaScript</text>
+      <path d="M350,28 L250,28 L250,90" class="wire" marker-end="url(#arr)"/>
+
+      <!-- status host -->
+      <rect x="40" y="96" width="300" height="214" rx="10" class="box host"/>
+      <text x="56" y="120" class="title">status host · droplet</text>
+      <text x="56" y="138" class="ok">✓ operational</text>
+      <rect x="54" y="148" width="272" height="38" rx="8" class="box sub"/>
+      <text x="66" y="172">Caddy · TLS · static page</text>
+      <rect x="54" y="192" width="272" height="38" rx="8" class="box sub"/>
+      <text x="66" y="216">statusd · probes · renderer</text>
+      <rect x="54" y="236" width="272" height="50" rx="8" class="box sub"/>
+      <text x="66" y="256">history.db · SQLite</text>
+      <text x="66" y="273" class="muted">hourly rollups · outages · 90 d</text>
+
+      <!-- public surface -->
+      <rect x="380" y="96" width="320" height="214" rx="10" class="box"/>
+      <text x="396" y="120" class="title">Public surface</text>
+      <text x="396" y="138" class="muted">probed from outside every 30 s</text>
+
+      <rect x="394" y="148" width="292" height="56" rx="8" class="box sub"/>
+      <text x="406" y="166" class="title">Home apps</text>
+      <text x="658" y="166" class="ok" text-anchor="end">✓ up</text>
+      <text x="406" y="182" class="muted">john2143.com · files · images · au</text>
+      <text x="406" y="196" class="muted">chat · tasks · llm · mail</text>
+
+      <rect x="394" y="210" width="292" height="44" rx="8" class="box sub"/>
+      <text x="406" y="228" class="title">DigitalOcean apps</text>
+      <text x="658" y="228" class="ok" text-anchor="end">✓ up</text>
+      <text x="406" y="244" class="muted">2143.me · i.2143.me · labs · openfront</text>
+
+      <rect x="394" y="260" width="292" height="44" rx="8" class="box sub"/>
+      <text x="406" y="278" class="title">Client sites</text>
+      <text x="658" y="278" class="ok" text-anchor="end">✓ up</text>
+      <text x="406" y="294" class="muted">aross.studio · balabusta · chess · mm.b</text>
+
+      <path d="M340,200 L376,200" class="wire" marker-end="url(#arr)"/>
+
+      <!-- edges, planned -->
+      <rect x="736" y="96" width="224" height="214" rx="10" class="box planned"/>
+      <text x="752" y="120" class="title">Edge slots</text>
+      <text x="752" y="138" class="plan">◌ planned · not deployed</text>
+      <rect x="750" y="148" width="196" height="38" rx="8" class="box planned"/>
+      <text x="762" y="165">s1 · Hetzner</text>
+      <text x="762" y="180" class="plan">◌ planned</text>
+      <rect x="750" y="192" width="196" height="38" rx="8" class="box planned"/>
+      <text x="762" y="209">s2 · DigitalOcean</text>
+      <text x="762" y="224" class="plan">◌ planned</text>
+      <text x="752" y="256" class="muted">L4 passthrough · TLS at home</text>
+      <text x="752" y="273" class="muted">no DNS record points home</text>
+      <path d="M736,172 L704,172" class="wg" stroke-dasharray="4 4" marker-end="url(#arrwg)"/>
+
+      <!-- home -->
+      <rect x="40" y="346" width="920" height="216" rx="12" class="box home"/>
+      <text x="58" y="372" class="title ok">home k3s</text>
+      <text x="392" y="372" class="muted">no inbound from the internet · no DNS record points here</text>
+
+      <rect x="58" y="386" width="250" height="158" rx="8" class="box sub"/>
+      <text x="72" y="408" class="title">pite · monitor</text>
+      <text x="72" y="428" class="muted">Prometheus · blackbox</text>
+      <text x="72" y="446" class="muted">Alertmanager → ntfy</text>
+      <text x="72" y="472" class="muted">reports every 30 s</text>
+      <text x="72" y="490" class="ok">✓ reporting</text>
+      <text x="72" y="516" class="muted">last: 4 s ago</text>
+
+      <rect x="324" y="386" width="382" height="158" rx="8" class="box sub"/>
+      <text x="338" y="408" class="title">k3s nodes</text>
+      <text x="338" y="428" class="muted">closet · arch · nas — servers, etcd</text>
+      <text x="338" y="446" class="muted">office · pite · big — agents</text>
+      <text x="338" y="472" class="ok">✓ 6/6 Ready</text>
+      <text x="338" y="494" class="muted">nas busy (91 % RAM), healthy</text>
+      <text x="338" y="516" class="muted">pods healthy · 0 active alerts</text>
+
+      <rect x="722" y="386" width="220" height="158" rx="8" class="box sub"/>
+      <text x="736" y="408" class="title">apps</text>
+      <text x="736" y="428" class="muted">unchanged by this work</text>
+      <text x="736" y="454" class="muted">Traefik gate:</text>
+      <text x="736" y="472" class="muted">rate limit · CrowdSec</text>
+      <text x="736" y="490" class="muted">Anubis for other apps</text>
+
+      <!-- report path -->
+      <path d="M183,346 L183,314" class="report" marker-end="url(#arrrep)"/>
+      <text x="196" y="336" class="plan" style="fill:var(--info)">report · bearer</text>
+    </svg>
+
+    <div class="cards">
+      <div class="card"><h4>Visitors — HTTPS</h4><p>One page · 30 s refresh · works without JavaScript</p></div>
+      <div class="card"><h4>status host · droplet <span class="pill ok">✓ operational</span></h4><p>Caddy · statusd · SQLite history</p></div>
+      <div class="card"><h4>Home apps <span class="pill ok">✓ up</span></h4><p>john2143.com · files · images · au · chat · tasks · llm · mail</p></div>
+      <div class="card"><h4>DigitalOcean apps <span class="pill ok">✓ up</span></h4><p>2143.me · i.2143.me · labs · openfront</p></div>
+      <div class="card"><h4>Client sites <span class="pill ok">✓ up</span></h4><p>aross.studio · balabusta.homes · chess · anni · mm.b</p></div>
+      <div class="card planned"><h4>Edge slots <span class="pill muted">◌ planned</span></h4><p>s1 Hetzner · s2 DigitalOcean · L4 passthrough, TLS at home</p></div>
+      <div class="card home"><h4>home k3s</h4><p>pite reports every 30 s · 6/6 nodes Ready · pods healthy · 0 alerts</p><p>No inbound from the internet · no DNS record points here</p></div>
+    </div>
+
+    <div class="legend">
+      <span><i class="swatch"></i> public request / probe</span>
+      <span><i class="swatch wg"></i> WireGuard tunnel</span>
+      <span><i class="swatch report"></i> pite report (bearer)</span>
+      <span class="pill ok">✓ up</span>
+      <span class="pill warn">▲ degraded</span>
+      <span class="pill bad">✕ down</span>
+      <span class="pill muted">◌ planned</span>
+      <span class="pill info">⟳ maintenance</span>
+    </div>
+    <figcaption>The status host is the only off-house thing here. It probes every public name from
+      outside and keeps the history; pite pushes home state to it, so a home outage shows as
+      “not reporting” instead of a false green. Edge slots are the target design, not deployed.</figcaption>
+  </figure>
+
+  <h2>Components</h2>
+  <div class="tw">
+  <table>
+    <thead><tr><th>Component</th><th>State</th><th>7 d</th><th>30 d</th><th>90 d</th><th>Last 90 days</th></tr></thead>
+    <tbody>
+      <tr><td>status.2143.me</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td>
+        <td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+      <tr><td>john2143.com</td><td><span class="pill ok">✓ up</span></td><td class="num">95.4 %</td><td class="num">98.9 %</td><td class="num">99.6 %</td>
+        <td><div class="strip"><i class="day bad" style="left:8.5%"></i><i class="day bad" style="left:9.6%"></i></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+      <tr><td>files.john2143.com</td><td><span class="pill ok">✓ up</span></td><td class="num">95.4 %</td><td class="num">98.9 %</td><td class="num">99.6 %</td>
+        <td><div class="strip"><i class="day bad" style="left:8.5%"></i><i class="day bad" style="left:9.6%"></i></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+      <tr><td>au.2143.me (sign-in)</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">99.9 %</td><td class="num">99.90 %</td>
+        <td><div class="strip"><i class="day warn" style="left:9.8%"></i></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+      <tr><td>2143.me · i.2143.me</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td>
+        <td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+      <tr><td>Home cluster</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td>
+        <td><div class="strip"><i class="day warn" style="left:6.8%"></i></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
+      <tr><td>Edge slots s1 · s2</td><td><span class="pill muted">◌ planned</span></td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+        <td><div class="strip" style="opacity:.25"></div><div class="axis"><span>not deployed</span><span></span></div></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Drills — last verified</h2>
+  <p class="small">A status page that never proves its failure paths is decoration. These are the paths the page claims to survive.</p>
+  <div class="tw">
+  <table>
+    <thead><tr><th>Drill</th><th>Target</th><th>Last result</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><td>Home stops reporting</td><td>shows “not reporting” within 3 min, page stays up</td><td><span class="pill ok">✓ 2 m 10 s</span></td><td class="num">2026-10-18</td></tr>
+      <tr><td>Restore history from snapshot</td><td>lose at most one day</td><td><span class="pill ok">✓ 24 h</span></td><td class="num">2026-10-18</td></tr>
+      <tr><td>TLS renewal</td><td>no lapse</td><td><span class="pill ok">✓ 62 d left</span></td><td class="num">2026-10-19</td></tr>
+      <tr><td>Edge slot destroyed</td><td>0 failed requests with two live</td><td><span class="pill muted">◌ no edges yet</span></td><td class="num">—</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Incidents</h2>
+  <div class="tw">
+  <table>
+    <thead><tr><th>When (UTC)</th><th>What</th><th>Duration</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td class="num">2026-10-16 14:56 → 18:10</td><td>john2143.com and files.john2143.com unreachable; Traefik HTTPS probe timed out</td><td class="num">3 h 14 m</td><td><span class="pill ok">resolved</span></td></tr>
+      <tr><td class="num">2026-10-15 17:27 → 22:23</td><td>same two hosts, same failure mode</td><td class="num">4 h 56 m</td><td><span class="pill ok">resolved</span></td></tr>
+      <tr><td class="num">2026-10-14 19:06</td><td>pite container replaced during a rebuild; history unaffected</td><td class="num">6 m</td><td><span class="pill info">maintenance</span></td></tr>
+      <tr><td class="num">2026-10-10 12:05 → 14:15</td><td>au.2143.me sign-in blank on cold loads; rate limit too tight</td><td class="num">2 h 10 m</td><td><span class="pill ok">resolved</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <footer>
+    <span>Design preview — sample data, not live.</span>
+    <span>2143 Labs · no scripts, no trackers</span>
+  </footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2143 Labs — status design gallery</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1f;--muted:#5f6368;--line:#d9d6cf;--panel:#f1efe9;--accent:#2457c5;--ok:#1f7a4d}
+@media (prefers-color-scheme:dark){:root{--bg:#141517;--fg:#e6e6e3;--muted:#a3a3a0;--line:#34363b;--panel:#1c1e22;--accent:#7aa2ff;--ok:#5cc28e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:52rem;margin:0 auto;padding:2.5rem 1.5rem 4rem}
+h1{font-size:1.75rem;margin:0 0 .3rem}
+.meta{color:var(--muted);font-size:.95rem;margin-bottom:2rem}
+a{color:var(--accent)}
+ul{list-style:none;padding:0;display:grid;gap:.8rem}
+li{border:1px solid var(--line);border-radius:10px;padding:.9rem 1.1rem;background:var(--panel)}
+li a{font-weight:600;font-size:1.05rem;text-decoration:none}
+li p{margin:.25rem 0 0;font-size:.92rem;color:var(--muted)}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88em}
+footer{margin-top:2.5rem;border-top:1px solid var(--line);padding-top:.8rem;color:var(--muted);font-size:.88rem}
+</style>
+</head>
+<body>
+<main>
+  <h1>Status design gallery</h1>
+  <p class="meta">Workshop for <code>status.2143.me</code>. Production stays on its own host; this is where designs are reviewed.</p>
+  <ul>
+    <li><a href="map.html">Map</a><p>Diagram-first: the live map as the page, then components, drills and incidents.</p></li>
+    <li><a href="doc.html">Document</a><p>Calmer, denser: summary cards, collapsible groups, today/target table.</p></li>
+  </ul>
+  <footer>Every PR gets a preview at <code>status-{N}.john2143.com</code>. This page tracks <code>main</code>.</footer>
+</main>
+</body>
+</html>

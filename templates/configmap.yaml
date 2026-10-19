@@ -1,0 +1,15 @@
+# Every designs/*.html becomes a key in this ConfigMap, flattened to the file
+# name so the pages are served at /map.html, /doc.html, ... whatever the design
+# is called. No image build: Argo renders the chart from the PR's own commit.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: status-design
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: status-design
+data:
+{{- range $path, $_ := .Files.Glob "designs/*.html" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
