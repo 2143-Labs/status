@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>2143 status</title>
+<style>
+:root{
+  --bg:#f6f5f1;--surface:#fff;--surface-2:#efede7;--fg:#1b1c1e;--muted:#5f6268;--faint:#8b8e94;
+  --line:#e3e0d8;--line-2:#eeebe4;--accent:#2f52cc;--accent-soft:#e6ebfb;
+  --ok:#1f8a5b;--ok-bar:#3aae77;--minor:#d2a20a;--major:#e27a1c;--severe:#d43f3f;--none:#d6d3cb;
+  --ok-soft:#e2f3e9;--warn-soft:#fbf1da;--bad-soft:#fbe5e2;--stale-soft:#ecebe7;--stale:#7a7d83;
+  --shadow:0 1px 2px rgb(20 20 20/.04),0 6px 20px rgb(20 20 20/.05);--r:14px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1012;--surface:#17181b;--surface-2:#1f2125;--fg:#e9e9e7;--muted:#a1a4a9;--faint:#74777d;
+  --line:#2a2c31;--line-2:#222428;--accent:#90a9ff;--accent-soft:#1b2340;
+  --ok:#4cc38a;--ok-bar:#35a26f;--minor:#e0b43a;--major:#ef8f3c;--severe:#f06a6a;--none:#33353a;
+  --ok-soft:#13261c;--warn-soft:#2a2312;--bad-soft:#2e1717;--stale-soft:#202124;--stale:#8d9096;
+  --shadow:0 1px 2px rgb(0 0 0/.35),0 8px 24px rgb(0 0 0/.25);
+}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+a{color:var(--accent)}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.wrap{max-width:60rem;margin:0 auto;padding:0 1.25rem}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.skip{position:absolute;left:-999px;top:.5rem;background:var(--surface);padding:.4rem .7rem;border-radius:8px;z-index:30}
+.skip:focus{left:.5rem}
+
+/* header */
+.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line)}
+.top-in{display:flex;align-items:center;justify-content:space-between;gap:1rem;height:3.5rem}
+.brand{display:flex;align-items:center;gap:.55rem;font-weight:700;letter-spacing:-.01em;text-decoration:none;color:var(--fg);font-size:1.02rem}
+.brand svg{width:26px;height:26px;flex:none}
+.brand .muted{font-weight:500}
+.seg{display:inline-flex;background:var(--surface-2);border-radius:999px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;padding:.28rem .75rem;border-radius:999px;font-weight:600;font-size:.86rem;color:var(--muted);cursor:pointer;white-space:nowrap;transition:background .15s,color .15s}
+.seg button:hover{color:var(--fg)}
+.seg button[aria-checked=true]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgb(0 0 0/.12)}
+
+/* sample bar */
+.sample{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .8rem;margin:1rem 0 0;padding:.6rem .8rem;border:1px dashed var(--line);border-radius:12px;font-size:.88rem}
+.sample-tag{font-weight:700;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;background:var(--accent-soft);color:var(--accent);padding:.15rem .5rem;border-radius:6px}
+.sample .seg{margin-left:auto}
+
+/* hero */
+.hero{--tone:var(--ok);--tone-soft:var(--ok-soft);position:relative;overflow:hidden;margin:1.25rem 0 1rem;padding:1.35rem 1.5rem;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);box-shadow:var(--shadow);display:grid;grid-template-columns:auto 1fr auto;gap:1.1rem;align-items:center}
+.hero::before{content:"";position:absolute;inset:0;background:linear-gradient(100deg,var(--tone-soft) 0%,transparent 65%);pointer-events:none}
+.hero>*{position:relative}
+.hero[data-tone=warn]{--tone:var(--minor);--tone-soft:var(--warn-soft)}
+.hero[data-tone=bad]{--tone:var(--severe);--tone-soft:var(--bad-soft)}
+.hero[data-tone=stale]{--tone:var(--stale);--tone-soft:var(--stale-soft)}
+.hero-icon{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:var(--tone);color:#fff}
+.hero-icon svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.hero[data-tone=bad] .hero-icon::after,.hero[data-tone=warn] .hero-icon::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--tone);animation:ring 2.2s ease-out infinite}
+@keyframes ring{from{transform:scale(1);opacity:.55}to{transform:scale(1.55);opacity:0}}
+.hero h1{margin:0;font-size:1.5rem;line-height:1.25;letter-spacing:-.015em}
+.hero p{margin:.3rem 0 0;color:var(--muted);max-width:40rem}
+.live{align-self:start;display:flex;align-items:center;gap:.45rem;font-size:.82rem;color:var(--muted);white-space:nowrap}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);position:relative}
+.live-dot::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--ok);animation:ping 2s ease-out infinite}
+.hero[data-tone=stale] .live-dot,.hero[data-tone=stale] .live-dot::after{background:var(--stale);animation:none}
+@keyframes ping{from{transform:scale(1);opacity:.6}to{transform:scale(2.6);opacity:0}}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem;margin-bottom:2rem}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:.85rem 1.05rem}
+.stat .k{font-size:.8rem;color:var(--muted)}
+.stat .v{font-size:1.55rem;font-weight:650;letter-spacing:-.02em;line-height:1.25;margin-top:.1rem}
+.stat .s{font-size:.8rem;color:var(--faint);margin-top:.1rem}
+
+/* services */
+.svc-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.6rem 1rem;margin:0 0 .9rem}
+.legend{display:flex;flex-wrap:wrap;gap:.35rem .9rem;font-size:.78rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:.35rem}
+.sw{display:inline-block;width:8px;height:14px;border-radius:2px;background:var(--ok-bar)}
+.sw[data-t=minor]{background:var(--minor)}.sw[data-t=major]{background:var(--major)}.sw[data-t=severe]{background:var(--severe)}
+.sw[data-t=none]{background:var(--none);height:7px;align-self:flex-end;margin-bottom:3px}
+.toggle{display:inline-flex;align-items:center;gap:.45rem;font-size:.86rem;color:var(--muted);cursor:pointer;user-select:none}
+.toggle input{accent-color:var(--accent);width:15px;height:15px;margin:0}
+.group{margin-bottom:1.6rem}
+.group-h{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;margin:0 .2rem .15rem}
+.group-h h2{margin:0;font-size:1.02rem;letter-spacing:-.005em}
+.group-sum{font-size:.82rem;color:var(--muted)}
+.group-note{margin:0 .2rem .55rem;font-size:.82rem;color:var(--faint)}
+.rows{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.row{padding:.85rem 1.1rem .8rem;border-top:1px solid var(--line-2);border-radius:var(--r)}
+.row:first-child{border-top:0}
+.row-h{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto auto;align-items:center;gap:.7rem;width:100%;background:none;border:0;padding:0;text-align:left;cursor:pointer;border-radius:6px}
+.name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lat{font-size:.84rem;color:var(--muted)}
+.pct{font-weight:650;min-width:4.6rem;text-align:right}
+.chev{width:16px;height:16px;fill:none;stroke:var(--faint);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s}
+.row-h[aria-expanded=true] .chev{transform:rotate(180deg)}
+.row-h:hover .name{color:var(--accent)}
+.tag{font-size:.78rem;font-weight:650;padding:.12rem .5rem;border-radius:999px;white-space:nowrap}
+.tag.bad{background:var(--bad-soft);color:var(--severe)}
+.tag.warn{background:var(--warn-soft);color:color-mix(in srgb,var(--minor) 70%,var(--fg))}
+.tag.stale{background:var(--stale-soft);color:var(--muted)}
+.cov{font-size:.7rem;font-weight:600;color:var(--faint);margin-right:.3rem}
+
+.dot{--tone:var(--ok);width:18px;height:18px;border-radius:50%;display:inline-grid;place-items:center;background:var(--tone);color:#fff;flex:none}
+.dot svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.dot[data-s=down]{--tone:var(--severe)}
+.dot[data-s=degraded]{--tone:var(--minor)}
+.dot[data-s=unknown]{background:transparent;border:1.5px dashed var(--faint);color:var(--faint)}
+
+.strip{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));gap:2px;align-items:end;height:30px;margin:.6rem 0 .2rem;border-radius:4px;cursor:pointer;touch-action:manipulation}
+.strip[data-dense]{gap:1px}
+.bar{height:100%;border-radius:2px;background:var(--ok-bar);transform-origin:bottom;transition:filter .12s}
+.bar[data-t=minor]{background:var(--minor)}.bar[data-t=major]{background:var(--major)}.bar[data-t=severe]{background:var(--severe)}
+.bar[data-t=none]{background:var(--none);height:34%}
+.bar:hover,.bar.is-active{filter:brightness(1.18) saturate(1.1)}
+.bar.is-active{outline:2px solid var(--fg);outline-offset:1px}
+.anim .bar{animation:grow .45s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(var(--i)*3ms)}
+@keyframes grow{from{transform:scaleY(.12);opacity:.25}}
+.axis{display:flex;justify-content:space-between;gap:1rem;font-size:.74rem;color:var(--faint)}
+
+/* detail */
+.detail{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:1.1rem 1.5rem;margin-top:.9rem;padding-top:.9rem;border-top:1px dashed var(--line)}
+.detail h3{margin:0 0 .4rem;font-size:.8rem;font-weight:650;color:var(--muted)}
+.spark-h{display:flex;justify-content:space-between;gap:.5rem;align-items:baseline}
+.spark-read{font-size:.8rem;color:var(--muted)}
+.spark{display:block;width:100%;height:64px;cursor:crosshair}
+.spark-line{fill:none;stroke:var(--accent);stroke-width:1.6;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.spark-area{fill:var(--accent);opacity:.1}
+.spark-x{stroke:var(--fg);stroke-width:1;opacity:.45;vector-effect:non-scaling-stroke}
+.spark-axis{display:flex;justify-content:space-between;font-size:.72rem;color:var(--faint)}
+.facts{margin:0;display:grid;gap:.45rem;font-size:.86rem;align-content:start;align-self:start}
+.facts div{display:grid;grid-template-columns:7.5rem 1fr;gap:.5rem}
+.facts dt{color:var(--muted)}.facts dd{margin:0}
+.facts .warn{color:var(--major);font-weight:600}
+.mini{display:flex;flex-wrap:wrap;gap:.2rem .8rem}
+.mini span{color:var(--muted);font-size:.8rem}.mini b{color:var(--fg);font-weight:600;font-size:.86rem}
+.d-out{margin-top:1rem}
+.d-out ol{list-style:none;margin:0;padding:0;display:grid;gap:.25rem}
+.olink{display:flex;gap:.6rem;width:100%;background:none;border:0;padding:.3rem .45rem;margin:0 -.45rem;border-radius:6px;cursor:pointer;text-align:left;font-size:.86rem}
+.olink:hover{background:var(--surface-2)}
+.olink .when{color:var(--muted);min-width:9.5rem}
+.small{font-size:.86rem}
+
+/* incidents */
+.sec-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:.4rem 1rem;margin:2.2rem .2rem .7rem}
+.sec-h h2{margin:0;font-size:1.15rem}
+.sec-h .toggle{margin-left:auto}
+.inc-list{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.inc{display:grid;grid-template-columns:9.5rem minmax(0,1fr);gap:1rem;padding:.85rem 1.1rem;border-top:1px solid var(--line-2);border-radius:var(--r)}
+.inc:first-child{border-top:0}
+.inc-day{display:block;font-weight:600;font-size:.9rem}
+.inc-time{font-size:.82rem;color:var(--muted)}
+.inc-title{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;font-weight:600}
+.badge{font-size:.7rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:.12rem .45rem;border-radius:5px;background:var(--bad-soft);color:var(--severe)}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.4rem}
+.chip{display:inline-flex;align-items:center;gap:.35rem;border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:.12rem .55rem .12rem .25rem;font-size:.8rem;cursor:pointer}
+.chip:hover{border-color:var(--accent)}
+.chip .dot{width:14px;height:14px}.chip .dot svg{width:8px;height:8px}
+.empty{padding:1.1rem;color:var(--muted);display:flex;gap:.6rem;align-items:center}
+.more{display:block;margin:.7rem auto 0;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:.35rem 1rem;font-size:.86rem;cursor:pointer}
+.more:hover{border-color:var(--accent)}
+.flash{animation:flash 1.8s ease-out}
+@keyframes flash{0%,35%{box-shadow:inset 0 0 0 2px var(--accent);background:var(--accent-soft)}100%{box-shadow:inset 0 0 0 2px transparent}}
+
+/* tooltip */
+.tip{position:fixed;z-index:40;max-width:17rem;padding:.55rem .7rem;border-radius:10px;background:var(--fg);color:var(--bg);font-size:.8rem;line-height:1.4;box-shadow:0 8px 24px rgb(0 0 0/.2);pointer-events:none}
+.tip-h{font-weight:650;margin-bottom:.15rem}
+.tip-v{display:flex;align-items:center;gap:.4rem}
+.tip-o{opacity:.8;margin-top:.15rem}
+.tip-hint{opacity:.6;margin-top:.3rem;font-size:.74rem}
+
+.foot{margin-top:2.5rem;padding-top:1rem;padding-bottom:3rem;border-top:1px solid var(--line);font-size:.82rem;color:var(--muted)}
+.foot p{margin:.3rem 0}
+.nojs{margin:2rem 0;padding:1rem;border:1px solid var(--line);border-radius:12px}
+
+@media (max-width:640px){
+  .wrap{padding:0 .9rem}
+  .brand .muted{display:none}
+  .seg button{padding:.25rem .55rem}
+  .hero{grid-template-columns:auto 1fr;padding:1.1rem}
+  .hero h1{font-size:1.2rem}
+  .hero-icon{width:42px;height:42px}.hero-icon svg{width:21px;height:21px}
+  .live{grid-column:1/-1;order:-1}
+  .stats{grid-template-columns:1fr;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+  .stat{display:grid;grid-template-columns:1fr auto;column-gap:1rem;align-items:center;border:0;border-top:1px solid var(--line-2);border-radius:0;background:none;padding:.6rem .9rem}
+  .stat:first-child{border-top:0}
+  .stat .v{grid-column:2;grid-row:1/3;font-size:1.25rem;margin:0}
+  .stat .k{color:var(--fg);font-weight:600}
+  .row{padding:.75rem .85rem}
+  .row-h{gap:.5rem}.lat{display:none}
+  .detail{grid-template-columns:1fr}
+  .inc{grid-template-columns:1fr;gap:.3rem}
+  .sample .seg{margin-left:0;max-width:100%;overflow-x:auto;scrollbar-width:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#services">Skip to services</a>
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="./">
+      <svg viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="7" fill="currentColor"/><path d="M5.5 13.5h3.4l2-5 3.2 9.5 2.1-4.5h4.3" fill="none" stroke="var(--bg)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>2143</span><span class="muted">status</span>
+    </a>
+    <div class="seg" id="range" role="radiogroup" aria-label="Time range">
+      <button type="button" role="radio" data-range="24h">24h</button>
+      <button type="button" role="radio" data-range="7d">7d</button>
+      <button type="button" role="radio" data-range="30d">30d</button>
+      <button type="button" role="radio" data-range="90d">90d</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="sample" class="sample" hidden></div>
+  <section id="hero" class="hero" data-tone="stale" aria-labelledby="hero-title">
+    <div class="hero-icon" aria-hidden="true"></div>
+    <div><h1 id="hero-title">Loading status…</h1><p></p></div>
+  </section>
+  <p id="announce" class="sr" aria-live="polite"></p>
+  <section id="stats" class="stats" aria-label="Summary"></section>
+  <section id="services" aria-label="Services"></section>
+  <section id="incidents" aria-labelledby="inc-h"></section>
+  <noscript><p class="nojs">The live board needs JavaScript. The raw data is at <a href="sample-normal.json">sample-normal.json</a>.</p></noscript>
+</main>
+<footer class="wrap foot" id="foot"></footer>
+<div id="tip" class="tip" role="tooltip" hidden></div>
+<p id="sr" class="sr" aria-live="polite"></p>
+
+<script>
+(() => {
+'use strict';
+const RANGES = {
+  '24h': {secs: 86400, days: 1, label: 'last 24 hours', unit: 'hour', start: '24 hours ago'},
+  '7d': {secs: 7 * 86400, days: 7, label: 'last 7 days', unit: '4 hours', start: '7 days ago'},
+  '30d': {secs: 30 * 86400, days: 30, label: 'last 30 days', unit: 'day', start: '30 days ago'},
+  '90d': {secs: 90 * 86400, days: 90, label: 'last 90 days', unit: 'day', start: '90 days ago'},
+};
+const SCENARIOS = [['normal', 'Normal'], ['incident', 'Incident'], ['home-offline', 'Home offline'], ['stale', 'Stale data']];
+const STALE_S = 120, BLIP_S = 300, POLL_MS = 30000, LIMIT = 8;
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
+const state = {range: '30d', scenario: null, open: new Set(), issues: false, blips: false, showAll: false};
+let data = null, mode = 'live', loadedAt = 0, fmt = null, byId = {}, incidents = [], outagesBy = {};
+const bucketCache = {};
+let active = null, lastPointer = 'mouse', tapKey = null, heroKey = '', pollTimer = 0;
+
+/* ---------- formatting ---------- */
+const GLYPH = {
+  up: '<path d="M3.5 8.5l3 3 6-7"/>',
+  down: '<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/>',
+  degraded: '<path d="M8 4v5"/><path d="M8 12v.2"/>',
+  unknown: '<path d="M5 8h6"/>',
+};
+const HERO_GLYPH = {ok: GLYPH.up, warn: GLYPH.degraded, bad: GLYPH.down, stale: '<path d="M8 4.5V8l2.5 1.6"/><circle cx="8" cy="8" r="5.5"/>'};
+const STATE_WORD = {up: 'Up', down: 'Down', degraded: 'Slow', unknown: 'Not reporting'};
+const svg16 = p => `<svg viewBox="0 0 16 16" aria-hidden="true">${p}</svg>`;
+const dot = s => `<span class="dot" data-s="${esc(s)}">${svg16(GLYPH[s] || GLYPH.unknown)}</span>`;
+
+function pct(v) {
+  if (v == null) return '—';
+  if (v >= 100) return '100%';
+  return (Math.floor(v * 100) / 100).toFixed(2) + '%';
+}
+function durText(s) {
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return 'under a minute';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
+function agoText(s) {
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return `${s} s ago`;
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  return `${Math.round(s / 3600)} h ago`;
+}
+const msText = v => v == null ? '—' : v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`;
+function listNames(a) {
+  if (a.length <= 1) return a.join('');
+  if (a.length <= 3) return a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+  return `${a.slice(0, 2).join(', ')} and ${a.length - 2} others`;
+}
+function makeFmt(tz) {
+  const o = tz ? {timeZone: tz} : {};
+  const day = new Intl.DateTimeFormat('en-US', {...o, weekday: 'short', month: 'short', day: 'numeric'});
+  const dayShort = new Intl.DateTimeFormat('en-US', {...o, month: 'short', day: 'numeric'});
+  const time = new Intl.DateTimeFormat('en-US', {...o, hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
+  const iso = new Intl.DateTimeFormat('en-CA', {...o, year: 'numeric', month: '2-digit', day: '2-digit'});
+  const dayUTC = new Intl.DateTimeFormat('en-US', {timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric'});
+  const zone = (new Intl.DateTimeFormat('en-US', {...o, timeZoneName: 'short'}).formatToParts(new Date())
+    .find(p => p.type === 'timeZoneName') || {}).value || '';
+  return {
+    day: t => day.format(t * 1000), dayShort: t => dayShort.format(t * 1000), time: t => time.format(t * 1000),
+    iso: t => iso.format(t * 1000), dayUTC: d => dayUTC.format(d), zone,
+  };
+}
+function safeUrl(u) {
+  try { const x = new URL(u); return x.protocol === 'https:' ? x : null; } catch { return null; }
+}
+
+/* ---------- clock ---------- */
+const elapsed = () => (Date.now() - loadedAt) / 1000;
+function ageS() {
+  if (mode === 'sample') { const b = data.sample_age_s || 0; return b > STALE_S ? b + elapsed() : b + elapsed() % 30; }
+  return Math.max(0, Date.now() / 1000 - data.generated);
+}
+function homeAgeS() {
+  const b = data.home_age_s;
+  if (b == null) return null;
+  if (mode === 'sample') return b > STALE_S ? b + elapsed() : b + elapsed() % 30;
+  return b + Math.max(0, Date.now() / 1000 - data.generated);
+}
+const nowS = () => data.generated + (mode === 'sample' ? ageS() : Math.max(0, Date.now() / 1000 - data.generated));
+
+/* ---------- state in the URL ---------- */
+function readHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  state.range = RANGES[p.get('range')] ? p.get('range') : '30d';
+  const sc = p.get('scenario');
+  state.scenario = SCENARIOS.some(s => s[0] === sc) ? sc : null;
+  state.open = new Set((p.get('open') || '').split(',').filter(Boolean));
+  state.issues = p.get('issues') === '1';
+}
+function writeHash() {
+  const p = new URLSearchParams();
+  if (state.range !== '30d') p.set('range', state.range);
+  if (state.scenario) p.set('scenario', state.scenario);
+  if (state.open.size) p.set('open', [...state.open].join(','));
+  if (state.issues) p.set('issues', '1');
+  const h = p.toString();
+  history.replaceState(null, '', h ? '#' + h : location.pathname + location.search);
+}
+
+/* ---------- data ---------- */
+async function fetchJson(url) {
+  const r = await fetch(url, {cache: 'no-store'});
+  if (!r.ok) throw new Error(`${url}: ${r.status}`);
+  return r.json();
+}
+async function load(animate) {
+  let d = null, m = 'live';
+  if (!state.scenario) { try { d = await fetchJson('status.json'); } catch { d = null; } }
+  if (!d) { m = 'sample'; d = await fetchJson(`sample-${state.scenario || 'normal'}.json`); }
+  if (!d || d.v !== 1 || !Array.isArray(d.components)) throw new Error('Unexpected status data');
+  data = d; mode = m; loadedAt = Date.now();
+  fmt = makeFmt(d.tz);
+  byId = Object.fromEntries(d.components.map(c => [c.id, c]));
+  prepareOutages(d.outages || []);
+  render(animate);
+  schedulePoll();
+}
+function daysTouched(a, b) {
+  const s = new Set();
+  for (let t = a; t < b; t += 3600) s.add(fmt.iso(t));
+  s.add(fmt.iso(Math.max(a, b - 1)));
+  return s;
+}
+function prepareOutages(outs) {
+  outagesBy = {};
+  const now = nowS();
+  const list = outs.filter(o => byId[o.id]).map(o => ({...o, endT: o.end == null ? Infinity : o.end}))
+    .sort((x, y) => x.start - y.start);
+  for (const o of list) {
+    o.days = daysTouched(o.start, o.end == null ? now : o.end);
+    (outagesBy[o.id] ||= []).push(o);
+  }
+  const groups = [];
+  for (const o of list) {
+    const g = groups[groups.length - 1];
+    if (g && o.start <= g.endT + BLIP_S) { g.endT = Math.max(g.endT, o.endT); g.outs.push(o); }
+    else groups.push({start: o.start, endT: o.endT, outs: [o]});
+  }
+  for (const g of groups) {
+    g.key = 'i' + g.start;
+    g.end = g.endT === Infinity ? null : g.endT;
+    g.ids = [...new Set(g.outs.map(o => o.id))];
+    for (const o of g.outs) o.inc = g.key;
+  }
+  incidents = groups.reverse();
+}
+const incDur = i => (i.end == null ? nowS() : i.end) - i.start;
+const isBlip = i => i.end != null && incDur(i) < BLIP_S;
+
+function tier(p) {
+  if (p == null) return 'none';
+  if (p >= 99.9) return 'ok';
+  if (p >= 99) return 'minor';
+  if (p >= 95) return 'major';
+  return 'severe';
+}
+function dayDate(j) {
+  const [y, m, d] = data.days_start.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + j, 12));
+}
+function buckets(c, range) {
+  if (range === '24h' || range === '7d') {
+    const H = c.hourly_pct || [], step = range === '24h' ? 1 : 4, n = range === '24h' ? 24 : 42;
+    const first = H.length - n * step, out = [];
+    for (let i = 0; i < n; i++) {
+      const idx = first + i * step, vals = H.slice(idx, idx + step).filter(v => v != null);
+      const a = data.hours_start + idx * 3600, b = a + step * 3600;
+      const p = vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : null;
+      const label = fmt.iso(a) === fmt.iso(b - 1)
+        ? `${fmt.day(a)}, ${fmt.time(a)}–${fmt.time(b)}` : `${fmt.day(a)} ${fmt.time(a)} – ${fmt.time(b)}`;
+      out.push({a, b, pct: p, down: p == null ? null : Math.round((1 - p / 100) * step * 60), label});
+    }
+    return out;
+  }
+  const n = RANGES[range].days, D = c.daily_pct || [], M = c.daily_down_min || [], first = D.length - n;
+  return Array.from({length: n}, (_, i) => {
+    const j = first + i, dd = dayDate(j);
+    return {day: dd.toISOString().slice(0, 10), pct: D[j] ?? null, down: M[j] ?? null, label: fmt.dayUTC(dd), noon: dd};
+  });
+}
+function bucketOutages(id, b) {
+  const now = nowS();
+  return (outagesBy[id] || []).filter(o => b.day ? o.days.has(b.day) : o.start < b.b && (o.end == null ? now : o.end) > b.a);
+}
+function coverageDays(c) { return c.since ? (data.generated - c.since) / 86400 : null; }
+function needsAttention(c) {
+  const u = c.uptime ? c.uptime[state.range] : null;
+  return c.state !== 'up' || (u != null && u < 99.9);
+}
+
+/* ---------- render ---------- */
+function render(animate) {
+  const prev = active;
+  hideTip();
+  const focusId = document.activeElement && document.activeElement.closest('[data-id]') ? document.activeElement.closest('[data-id]').dataset.id : null;
+  const focusIsStrip = document.activeElement && document.activeElement.classList.contains('strip');
+  $$('#range button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.range === state.range)));
+  renderSample();
+  renderHero(true);
+  renderStats();
+  renderServices(animate);
+  renderIncidents();
+  renderFoot();
+  if (focusId) {
+    const el = focusIsStrip ? $(`.strip[data-id="${CSS.escape(focusId)}"]`) : $(`.row-h[data-id="${CSS.escape(focusId)}"]`);
+    if (el) el.focus({preventScroll: true});
+  }
+  if (prev && !animate) {
+    const s = $(`.strip[data-id="${CSS.escape(prev.id)}"]`), b = s && $$('.bar', s)[prev.i];
+    if (b) showTip(b);
+  }
+}
+function renderSample() {
+  const el = $('#sample');
+  if (mode !== 'sample') { el.hidden = true; return; }
+  el.hidden = false;
+  const cur = state.scenario || 'normal';
+  el.innerHTML = `<span class="sample-tag">Sample data</span>
+    <span class="muted">Real probe history recorded ${esc(fmt.dayShort(data.generated))}. Try a scenario:</span>
+    <div class="seg" role="radiogroup" aria-label="Scenario">${SCENARIOS.map(([k, v]) =>
+      `<button type="button" role="radio" data-sc="${k}" aria-checked="${k === cur}">${v}</button>`).join('')}</div>`;
+}
+function heroModel() {
+  const C = data.components, age = ageS(), homeAge = homeAgeS(), now = nowS();
+  const down = C.filter(c => c.state === 'down'), slow = C.filter(c => c.state === 'degraded'), unk = C.filter(c => c.state === 'unknown');
+  const names = a => esc(listNames(a.map(c => c.name)));
+  const be = a => a.length > 1 ? 'are' : 'is';
+  if (age > STALE_S) return {tone: 'stale', title: 'Status data is out of date',
+    sub: `The last update arrived ${agoText(age)}. Everything below is the last known state, not the current one.`};
+  const home = C.filter(c => c.hosted === 'home');
+  if (homeAge != null && homeAge > STALE_S && home.length && home.every(c => c.state === 'down' || c.state === 'unknown')) {
+    const cloudUp = C.filter(c => c.hosted === 'cloud' && c.state === 'up').length;
+    return {tone: 'bad', title: 'Home looks offline',
+      sub: `${down.length ? `${names(down)} ${be(down)} down, and h` : 'H'}ome services have not reported for ${durText(homeAge)}.` +
+        (cloudUp ? ' Sites hosted in the cloud are up.' : '')};
+  }
+  if (down.length) {
+    const starts = down.map(c => (outagesBy[c.id] || []).filter(o => o.end == null).map(o => o.start)).flat();
+    const since = starts.length ? Math.min(...starts) : null;
+    const parts = [];
+    if (down.length > 1) parts.push(`${names(down)}.`);
+    if (since) parts.push(`Down since ${fmt.time(since)} (${durText(now - since)}).`);
+    if (slow.length) parts.push(`${names(slow)} ${be(slow)} slow.`);
+    if (unk.length) parts.push(`${unk.length} not reporting.`);
+    if (!slow.length && !unk.length) parts.push('Everything else is responding.');
+    return {tone: 'bad', title: down.length === 1 ? `${esc(down[0].name)} is down` : `${down.length} services are down`, sub: parts.join(' ')};
+  }
+  if (slow.length) return {tone: 'warn', title: slow.length === 1 ? `${esc(slow[0].name)} is slow` : `${slow.length} services are slow`,
+    sub: `Responding, but slower than usual${slow.length === 1 && slow[0].latency_ms ? ` (${msText(slow[0].latency_ms)})` : ''}.`};
+  if (unk.length) return {tone: 'warn', title: `${unk.length} ${unk.length === 1 ? 'service is' : 'services are'} not reporting`,
+    sub: `${names(unk)}. Their last known state is shown below.`};
+  return {tone: 'ok', title: 'All systems operational', sub: `${C.length} services, checked every ${data.probe_interval_s || 30} seconds.`};
+}
+function renderHero(force) {
+  const m = heroModel(), key = m.tone + m.title + m.sub.replace(/\d+/g, '');
+  const hero = $('#hero');
+  if (force || key !== heroKey || m.sub !== hero.dataset.sub) {
+    hero.dataset.tone = m.tone;
+    hero.dataset.sub = m.sub;
+    hero.innerHTML = `<div class="hero-icon" aria-hidden="true"><svg viewBox="0 0 16 16">${HERO_GLYPH[m.tone]}</svg></div>
+      <div><h1 id="hero-title">${m.title}</h1><p>${m.sub}</p></div>
+      <div class="live"><span class="live-dot" aria-hidden="true"></span><span id="age"></span></div>`;
+    if (key !== heroKey) $('#announce').textContent = m.title.replace(/&[^;]+;/g, '');
+    heroKey = key;
+  }
+  $('#age').textContent = `Updated ${agoText(ageS())}`;
+}
+function renderStats() {
+  const C = data.components, r = RANGES[state.range], since = nowS() - r.secs;
+  const ups = C.map(c => c.uptime ? c.uptime[state.range] : null).filter(v => v != null);
+  const avg = ups.length ? ups.reduce((a, b) => a + b, 0) / ups.length : null;
+  const inRange = incidents.filter(i => (i.end == null ? Infinity : i.end) > since);
+  const real = inRange.filter(i => !isBlip(i)), blips = inRange.length - real.length;
+  const longest = real.reduce((a, i) => !a || incDur(i) > incDur(a) ? i : a, null);
+  const responding = C.filter(c => c.state === 'up' || c.state === 'degraded').length;
+  const down = C.filter(c => c.state === 'down').length, unk = C.filter(c => c.state === 'unknown').length;
+  const card = (k, v, s) => `<div class="stat"><div class="k">${k}</div><div class="v num">${v}</div><div class="s">${s}</div></div>`;
+  $('#stats').innerHTML =
+    card(`Uptime, ${r.label}`, pct(avg), `average of ${ups.length} services` +
+      (() => { const cov = Math.max(0, ...C.map(coverageDays).filter(v => v != null)); return cov && cov < r.days - 0.5 ? ` · ${Math.floor(cov)} days of data` : ''; })()) +
+    card(`Incidents, ${r.label}`, real.length,
+      (longest ? `longest ${durText(incDur(longest))}, ${esc(fmt.dayShort(longest.start))}` : 'none') +
+      (blips ? ` · ${blips} short blip${blips > 1 ? 's' : ''}` : '')) +
+    card('Responding now', `${responding} of ${C.length}`,
+      [down && `${down} down`, unk && `${unk} not reporting`].filter(Boolean).join(', ') || 'every service');
+}
+function rowHTML(c) {
+  const r = RANGES[state.range], bs = buckets(c, state.range);
+  bucketCache[c.id] = bs;
+  const open = state.open.has(c.id), u = c.uptime ? c.uptime[state.range] : null;
+  const cov = coverageDays(c), short = cov != null && cov < r.days - 0.5;
+  let right;
+  if (c.state === 'down') {
+    const o = (outagesBy[c.id] || []).find(x => x.end == null);
+    right = `<span class="tag bad">Down${o ? ` ${durText(nowS() - o.start)}` : ''}</span>`;
+  } else if (c.state === 'degraded') right = `<span class="tag warn">Slow, ${msText(c.latency_ms)}</span>`;
+  else if (c.state === 'unknown') right = '<span class="tag stale">Not reporting</span>';
+  else right = `<span class="lat num">${msText(c.latency_ms)}</span>`;
+  const sid = esc(c.id);
+  return `<li class="row" id="svc-${sid}">
+    <button type="button" class="row-h" data-id="${sid}" aria-expanded="${open}" aria-controls="d-${sid}">
+      ${dot(c.state)}<span class="name">${esc(c.name)}<span class="sr">, ${STATE_WORD[c.state] || 'Unknown'}</span></span>
+      ${right}
+      <span class="pct num" title="${short ? `Based on ${Math.floor(cov)} days of data` : `Uptime, ${r.label}`}">${short ? `<span class="cov">${Math.floor(cov)}d</span>` : ''}${pct(u)}</span>
+      <svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+    </button>
+    <div class="strip" data-id="${sid}" style="--n:${bs.length}"${bs.length > 60 ? ' data-dense' : ''} tabindex="0" role="group"
+      aria-label="${esc(c.name)} uptime, ${r.label}, one bar per ${r.unit}. Use the arrow keys to inspect, Enter to open the incident.">
+      ${bs.map((b, i) => `<span class="bar" data-i="${i}" data-t="${tier(b.pct)}" style="--i:${i}"></span>`).join('')}
+    </div>
+    <div class="axis"><span>${r.start}</span><span>${short ? `${Math.floor(cov)} days of data` : ''}</span><span>${r.unit === 'day' ? 'Today' : 'Now'}</span></div>
+    <div class="detail" id="d-${sid}"${open ? '' : ' hidden'}>${detailHTML(c)}</div>
+  </li>`;
+}
+function sparkSVG(c) {
+  const v = c.latency_10m || [], nums = v.filter(x => x != null);
+  if (!nums.length) return '<p class="muted small">No response-time data in the last 24 hours.</p>';
+  const W = 600, H = 64, pad = 4, max = Math.max(...nums) * 1.15 || 1;
+  const X = i => (i / (v.length - 1)) * W, Y = val => H - pad - (val / max) * (H - 2 * pad);
+  let line = '', area = '', seg = [];
+  const flush = () => {
+    if (seg.length > 1) {
+      const pts = seg.map(p => p.join(',')).join('L');
+      line += `M${pts}`; area += `M${seg[0][0]},${H}L${pts}L${seg[seg.length - 1][0]},${H}Z`;
+    } else if (seg.length === 1) line += `M${seg[0][0]},${seg[0][1]}h1`;
+    seg = [];
+  };
+  v.forEach((val, i) => { if (val == null) flush(); else seg.push([+X(i).toFixed(1), +Y(val).toFixed(1)]); });
+  flush();
+  return `<svg class="spark" data-id="${esc(c.id)}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <path class="spark-area" d="${area}"/><path class="spark-line" d="${line}"/>
+    <line class="spark-x" x1="0" x2="0" y1="0" y2="${H}" visibility="hidden"/></svg>
+    <div class="spark-axis"><span>24 h ago</span><span>Now</span></div>`;
+}
+function sparkSummary(c) {
+  const nums = (c.latency_10m || []).filter(x => x != null);
+  if (!nums.length) return '';
+  return `avg ${msText(nums.reduce((a, b) => a + b, 0) / nums.length)} · max ${msText(Math.max(...nums))}`;
+}
+function detailHTML(c) {
+  const r = RANGES[state.range], since = nowS() - r.secs, u = c.uptime || {};
+  const url = safeUrl(c.url);
+  const facts = [
+    ['Hosted', c.hosted === 'cloud' ? 'In the cloud' : 'At home'],
+    c.cert_days != null && ['TLS certificate', `<span class="${c.cert_days < 14 ? 'warn' : ''}">${c.cert_days} days left</span>`],
+    ['Uptime', `<span class="mini">${['24h', '7d', '30d', '90d'].map(k => `<span><b class="num">${pct(u[k])}</b> ${k}</span>`).join('')}</span>`],
+    c.since && ['Data since', esc(fmt.dayShort(c.since))],
+    url && ['Address', `<a href="${esc(url.href)}" rel="noopener">${esc(url.host + url.pathname.replace(/\/$/, ''))}</a>`],
+  ].filter(Boolean);
+  const outs = (outagesBy[c.id] || []).filter(o => o.endT > since).slice().reverse();
+  const now = nowS();
+  const items = outs.slice(0, 5).map(o => `<li><button type="button" class="olink" data-inc="${o.inc}">
+      <span class="when num">${esc(fmt.dayShort(o.start))}, ${fmt.time(o.start)}</span>
+      <span>${o.end == null ? `<b>ongoing</b>, ${durText(now - o.start)}` : durText(o.end - o.start)}</span></button></li>`).join('');
+  return `<div><div class="spark-h"><h3>Response time, last 24 hours</h3><span class="spark-read num" data-default="${sparkSummary(c)}">${sparkSummary(c)}</span></div>${sparkSVG(c)}
+      <div class="d-out"><h3>Outages, ${r.label}</h3>${items ? `<ol>${items}</ol>${outs.length > 5 ? `<p class="muted small">and ${outs.length - 5} more under Incidents.</p>` : ''}` : `<p class="muted small">None.</p>`}</div></div>
+    <dl class="facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
+}
+function renderServices(animate) {
+  const groups = data.groups || [];
+  const anyHidden = state.issues;
+  let html = `<div class="svc-bar">
+      <div class="legend" aria-label="Bar colours">
+        <span><i class="sw"></i>99.9% or better</span><span><i class="sw" data-t="minor"></i>under 99.9%</span>
+        <span><i class="sw" data-t="major"></i>under 99%</span><span><i class="sw" data-t="severe"></i>under 95%</span>
+        <span><i class="sw" data-t="none"></i>no data</span>
+      </div>
+      <label class="toggle"><input type="checkbox" id="issues"${state.issues ? ' checked' : ''}> Only show issues</label>
+    </div>`;
+  let shown = 0;
+  for (const g of groups) {
+    const all = data.components.filter(c => c.group === g.id);
+    const rows = anyHidden ? all.filter(needsAttention) : all;
+    if (!rows.length) continue;
+    shown += rows.length;
+    const up = all.filter(c => c.state === 'up' || c.state === 'degraded').length;
+    const gid = esc(g.id);
+    html += `<section class="group" aria-labelledby="g-${gid}">
+      <div class="group-h"><h2 id="g-${gid}">${esc(g.name)}</h2><span class="group-sum">${up} of ${all.length} responding</span></div>
+      ${g.note ? `<p class="group-note">${esc(g.note)}</p>` : ''}
+      <ul class="rows${animate ? ' anim' : ''}">${rows.map(rowHTML).join('')}</ul></section>`;
+  }
+  if (!shown) html += `<div class="rows"><div class="empty">${dot('up')} Nothing needs attention: every service is up with 99.9% or better over the ${RANGES[state.range].label}.</div></div>`;
+  $('#services').innerHTML = html;
+}
+function renderIncidents() {
+  const r = RANGES[state.range], since = nowS() - r.secs, now = nowS();
+  let list = incidents.filter(i => (i.end == null ? Infinity : i.end) > since);
+  const blips = list.filter(isBlip).length;
+  if (!state.blips) list = list.filter(i => !isBlip(i));
+  const shown = state.showAll ? list : list.slice(0, LIMIT);
+  const endText = i => {
+    if (i.end == null) return 'now';
+    return fmt.iso(i.end) === fmt.iso(i.start) ? fmt.time(i.end) : `${fmt.dayShort(i.end)}, ${fmt.time(i.end)}`;
+  };
+  const item = i => `<li class="inc" id="inc-${i.key}">
+      <div><span class="inc-day">${esc(fmt.day(i.start))}</span><span class="inc-time num">${fmt.time(i.start)} – ${esc(endText(i))}</span></div>
+      <div><div class="inc-title">${i.end == null ? '<span class="badge">Ongoing</span>' : ''}<span class="num">${durText(incDur(i))}</span>
+        <span class="muted">· ${i.ids.length === 1 ? '1 service' : `${i.ids.length} services`}</span></div>
+        <div class="chips">${i.ids.map(id => `<button type="button" class="chip" data-goto="${esc(id)}">${dot(byId[id].state)}${esc(byId[id].name)}</button>`).join('')}</div>
+      </div></li>`;
+  $('#incidents').innerHTML = `<div class="sec-h"><h2 id="inc-h">Incidents</h2><span class="muted">${r.label}</span>
+      ${blips ? `<label class="toggle"><input type="checkbox" id="blips"${state.blips ? ' checked' : ''}> Include ${blips} blip${blips > 1 ? 's' : ''} under 5 min</label>` : ''}</div>
+    ${list.length ? `<ol class="inc-list">${shown.map(item).join('')}</ol>` :
+      `<div class="inc-list"><div class="empty">${dot('up')} No incidents in the ${r.label}.</div></div>`}
+    ${list.length > shown.length ? `<button type="button" class="more" id="more">Show ${list.length - shown.length} more</button>` : ''}`;
+}
+function renderFoot() {
+  $('#foot').innerHTML = `<p>Times are ${esc(fmt.zone)} (${esc(data.tz || 'local')}). Services are checked every ${data.probe_interval_s || 30} seconds; an outage is two or more failed checks in a row.</p>
+    <p>Bars show uptime per day, or per hour at 24h and per 4 hours at 7d. Grey bars mean no data, not up.</p>
+    ${mode === 'sample' ? '<p>This sample was recorded by the home monitor, so it shows the house’s own view of its sites.</p>' : ''}
+    <p><a href="${mode === 'sample' ? `sample-${esc(state.scenario || 'normal')}.json` : 'status.json'}">Raw data</a> · <a href="./">Design gallery</a></p>`;
+}
+
+/* ---------- tooltip ---------- */
+function tipHTML(id, i) {
+  const b = bucketCache[id][i], c = byId[id], outs = bucketOutages(id, b), now = nowS();
+  let v;
+  if (b.pct == null) {
+    const before = c.since && (b.day ? b.day < fmt.iso(c.since) : b.b <= c.since);
+    v = before ? `No data. Monitoring started ${esc(fmt.dayShort(c.since))}.` : 'No data for this period.';
+  } else v = `${pct(b.pct)} up${b.down ? ` · ${durText(b.down * 60)} down` : ''}`;
+  return `<div class="tip-h">${esc(b.label)}</div><div class="tip-v"><i class="sw" data-t="${tier(b.pct)}"></i>${v}</div>` +
+    outs.slice(0, 3).map(o => `<div class="tip-o">${o.end == null ? `Down since ${fmt.time(o.start)}` : `Outage ${fmt.time(o.start)}–${fmt.time(o.end)}`}, ${durText((o.end == null ? now : o.end) - o.start)}</div>`).join('') +
+    (outs.length > 3 ? `<div class="tip-o">and ${outs.length - 3} more</div>` : '') +
+    (outs.length ? `<div class="tip-hint">${lastPointer === 'touch' ? 'Tap again' : 'Click'} to see the incident</div>` : '');
+}
+function showTip(bar) {
+  const strip = bar.parentElement, id = strip.dataset.id, i = +bar.dataset.i, tip = $('#tip');
+  $$('.bar.is-active').forEach(x => x !== bar && x.classList.remove('is-active'));
+  bar.classList.add('is-active');
+  active = {id, i};
+  tip.innerHTML = tipHTML(id, i);
+  tip.hidden = false;
+  const r = bar.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - tw / 2), innerWidth - tw - 8);
+  const top = r.top - th - 10 < 8 ? r.bottom + 10 : r.top - th - 10;
+  tip.style.left = `${left}px`; tip.style.top = `${top}px`;
+  return tip.textContent;
+}
+function hideTip() {
+  $('#tip').hidden = true;
+  $$('.bar.is-active').forEach(x => x.classList.remove('is-active'));
+  active = null;
+}
+
+/* ---------- navigation ---------- */
+function flash(el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+function scrollToEl(el) { el.scrollIntoView({behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center'}); flash(el); }
+function gotoIncident(key) {
+  const inc = incidents.find(i => i.key === key);
+  if (!inc) return;
+  if (isBlip(inc) && !state.blips) state.blips = true;
+  renderIncidents();
+  if (!$(`#inc-${key}`)) { state.showAll = true; renderIncidents(); }
+  const el = $(`#inc-${key}`);
+  if (el) scrollToEl(el);
+}
+function gotoService(id) {
+  if (state.issues && !needsAttention(byId[id])) { state.issues = false; renderServices(false); }
+  state.open.add(id); writeHash();
+  const btn = $(`.row-h[data-id="${CSS.escape(id)}"]`);
+  if (!btn) return;
+  btn.setAttribute('aria-expanded', 'true');
+  $(`#d-${CSS.escape(id)}`).hidden = false;
+  scrollToEl(btn.closest('.row'));
+}
+function barIncident(id, i) {
+  const outs = bucketOutages(id, bucketCache[id][i]);
+  return outs.length ? outs[outs.length - 1].inc : null;
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', e => {
+  const t = e.target;
+  const rb = t.closest('#range button');
+  if (rb && rb.dataset.range !== state.range) { state.range = rb.dataset.range; state.showAll = false; writeHash(); render(true); return; }
+  const sc = t.closest('[data-sc]');
+  if (sc) { state.scenario = sc.dataset.sc; state.showAll = false; writeHash(); load(true).catch(fail); return; }
+  const rh = t.closest('.row-h');
+  if (rh) {
+    const id = rh.dataset.id, open = rh.getAttribute('aria-expanded') !== 'true';
+    rh.setAttribute('aria-expanded', String(open));
+    $(`#d-${CSS.escape(id)}`).hidden = !open;
+    open ? state.open.add(id) : state.open.delete(id);
+    writeHash();
+    return;
+  }
+  const bar = t.closest('.bar');
+  if (bar) {
+    const id = bar.parentElement.dataset.id, i = +bar.dataset.i, key = `${id}:${i}`;
+    if (lastPointer === 'touch' && tapKey !== key) { tapKey = key; showTip(bar); return; }
+    tapKey = null;
+    const inc = barIncident(id, i);
+    if (inc) { hideTip(); gotoIncident(inc); }
+    return;
+  }
+  const chip = t.closest('[data-goto]');
+  if (chip) { gotoService(chip.dataset.goto); return; }
+  const ol = t.closest('[data-inc]');
+  if (ol) { gotoIncident(ol.dataset.inc); return; }
+  if (t.id === 'more') { state.showAll = true; renderIncidents(); return; }
+  if (!t.closest('.strip')) { tapKey = null; hideTip(); }
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'issues') { state.issues = e.target.checked; writeHash(); renderServices(false); }
+  if (e.target.id === 'blips') { state.blips = e.target.checked; renderIncidents(); }
+});
+document.addEventListener('pointerdown', e => { lastPointer = e.pointerType || 'mouse'; }, true);
+document.addEventListener('pointerover', e => {
+  const bar = e.target.closest('.bar');
+  if (bar && e.pointerType !== 'touch') showTip(bar);
+});
+document.addEventListener('pointerout', e => {
+  const strip = e.target.closest('.strip');
+  if (strip && e.pointerType !== 'touch' && !strip.contains(e.relatedTarget) && !strip.matches(':focus-visible')) hideTip();
+});
+document.addEventListener('pointermove', e => {
+  const sp = e.target.closest('.spark');
+  if (!sp) return;
+  const c = byId[sp.dataset.id], v = c.latency_10m || [], r = sp.getBoundingClientRect();
+  const i = Math.max(0, Math.min(v.length - 1, Math.round((e.clientX - r.left) / r.width * (v.length - 1))));
+  const x = (i / (v.length - 1)) * 600, ln = $('.spark-x', sp);
+  ln.setAttribute('x1', x); ln.setAttribute('x2', x); ln.setAttribute('visibility', 'visible');
+  const read = sp.closest('.detail').querySelector('.spark-read');
+  read.textContent = `${fmt.time(data.latency_start + i * 600)} · ${v[i] == null ? 'no data' : msText(v[i])}`;
+});
+document.addEventListener('pointerleave', e => {
+  if (!e.target.classList || !e.target.classList.contains('spark')) return;
+  $('.spark-x', e.target).setAttribute('visibility', 'hidden');
+  const read = e.target.closest('.detail').querySelector('.spark-read');
+  read.textContent = read.dataset.default;
+}, true);
+document.addEventListener('focusin', e => {
+  const strip = e.target.classList && e.target.classList.contains('strip') ? e.target : null;
+  if (!strip || !strip.matches(':focus-visible')) return;
+  const bars = $$('.bar', strip), i = active && active.id === strip.dataset.id ? active.i : bars.length - 1;
+  $('#sr').textContent = showTip(bars[i]);
+});
+document.addEventListener('focusout', e => {
+  if (e.target.classList && e.target.classList.contains('strip')) hideTip();
+});
+document.addEventListener('keydown', e => {
+  lastPointer = 'keyboard';
+  if (e.key === 'Escape') { hideTip(); return; }
+  const strip = e.target.classList && e.target.classList.contains('strip') ? e.target : null;
+  if (!strip) return;
+  const bars = $$('.bar', strip), cur = active && active.id === strip.dataset.id ? active.i : bars.length - 1;
+  let i = cur;
+  if (e.key === 'ArrowLeft') i = Math.max(0, cur - 1);
+  else if (e.key === 'ArrowRight') i = Math.min(bars.length - 1, cur + 1);
+  else if (e.key === 'Home') i = 0;
+  else if (e.key === 'End') i = bars.length - 1;
+  else if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    const inc = barIncident(strip.dataset.id, cur);
+    if (inc) { hideTip(); gotoIncident(inc); }
+    return;
+  } else return;
+  e.preventDefault();
+  $('#sr').textContent = showTip(bars[i]);
+});
+addEventListener('scroll', () => { if (!$('#tip').hidden && lastPointer !== 'keyboard') hideTip(); }, {passive: true});
+addEventListener('hashchange', () => { readHash(); load(false).catch(fail); });
+
+/* ---------- live updates ---------- */
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  if (mode !== 'live' || document.hidden) return;
+  pollTimer = setTimeout(() => load(false).catch(fail), POLL_MS);
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && data && mode === 'live' && Date.now() - loadedAt > POLL_MS) load(false).catch(fail);
+  else schedulePoll();
+});
+setInterval(() => { if (data) renderHero(false); }, 1000);
+
+function fail(err) {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(() => load(false).catch(fail), POLL_MS);
+  // With data on screen, a failed poll just lets it age; the hero turns "out of date" on its own.
+  if (data) return;
+  const hero = $('#hero');
+  hero.dataset.tone = 'stale';
+  hero.innerHTML = `<div class="hero-icon" aria-hidden="true"><svg viewBox="0 0 16 16">${HERO_GLYPH.stale}</svg></div>
+    <div><h1 id="hero-title">Could not load status data</h1><p>${esc(err.message)}. Retrying in 30 seconds.</p></div>`;
+}
+
+readHash();
+load(true).catch(fail);
+})();
+</script>
+</body>
+</html>

@@ -17,7 +17,7 @@ spec:
         app: status-design
       annotations:
         # Rolls the pod when any design changes; the ConfigMap name is stable.
-        checksum/designs: {{ printf "%s%s" (.Files.Glob "designs/*.html").AsConfig (.Files.Get "files/nginx.conf") | sha256sum | quote }}
+        checksum/designs: {{ printf "%s%s" (.Files.Glob "designs/*.{html,json}").AsConfig (.Files.Get "files/nginx.conf") | sha256sum | quote }}
     spec:
       affinity:
         nodeAffinity:
