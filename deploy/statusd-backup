@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+dest=/var/lib/status/snapshots/history-$(date -u +%Y%m%dT%H%M%SZ).db
+sqlite3 /var/lib/status/history.db "VACUUM INTO '$dest'"
+find /var/lib/status/snapshots -name 'history-*.db' -mtime +7 -delete

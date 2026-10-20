@@ -1,0 +1,36 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.12" }
+      - run: python3 -m compileall -q src tests
+      - run: PYTHONPATH=src python3 -m unittest discover -s tests -v
+  render-drift:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.12" }
+      - run: PYTHONPATH=src python3 tests/make_fixtures.py
+      - name: committed fixtures and previews match the renderer
+        run: git diff --exit-code -- tests/fixtures designs/live-normal.html designs/live-incident.html
+  caddy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker run --rm -v "$PWD/deploy:/c:ro" caddy:2 caddy validate --config /c/Caddyfile --adapter caddyfile
+  scripts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: command -v shellcheck || sudo apt-get install -y shellcheck
+      - run: shellcheck -s sh deploy/*.sh deploy/statusd-backup

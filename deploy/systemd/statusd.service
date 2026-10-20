@@ -1,0 +1,24 @@
+[Unit]
+Description=statusd (status.2143.me)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=statusd
+Group=statusd
+EnvironmentFile=/etc/status/build.env
+Environment=PYTHONPATH=/opt/status/src/src
+WorkingDirectory=/opt/status/src
+ExecStart=/usr/bin/python3 -m statusd --config /etc/status/statusd.toml --components /etc/status/components.toml
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+StateDirectory=status
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+MemoryMax=200M
+
+[Install]
+WantedBy=multi-user.target

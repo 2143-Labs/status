@@ -1,0 +1,32 @@
+{
+	servers {
+		protocols h1 h2
+	}
+}
+
+status-origin.2143.me {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=86400"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+		Cache-Control "no-cache"
+	}
+	handle /v1/* {
+		request_body {
+			max_size 65536
+		}
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle /home-status {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle {
+		root * /var/lib/status/www
+		file_server
+	}
+}

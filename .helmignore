@@ -1,0 +1,7 @@
+src/
+config/
+deploy/
+infra/
+tests/
+.github/
+*.md

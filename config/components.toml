@@ -1,0 +1,20 @@
+group = [
+  { id = "web",        name = "Websites",      note = "Checked from outside the house." },
+  { id = "home",       name = "Home services", note = "Reported by the home monitor every 30 s." },
+  { id = "monitoring", name = "Monitoring",    note = "Reported by the home monitor every 30 s." },
+]
+
+component = [
+  { id = "john2143-com",       name = "john2143.com",       group = "web",        kind = "http", hosted = "home",  url = "https://john2143.com",       expect = ["200-399"] },
+  { id = "files-john2143-com", name = "files.john2143.com", group = "web",        kind = "http", hosted = "home",  url = "https://files.john2143.com", expect = ["200-399", "403"] },
+  { id = "2143-me",            name = "2143.me",            group = "web",        kind = "http", hosted = "cloud", url = "https://2143.me",            expect = ["200-399"] },
+  { id = "2143-me-user",       name = "2143.me/user",       group = "web",        kind = "http", hosted = "cloud", url = "https://2143.me/user",       expect = ["200-399"] },
+  { id = "i-2143-me",          name = "i.2143.me",          group = "web",        kind = "http", hosted = "cloud", url = "https://i.2143.me",          expect = ["200-399"] },
+  { id = "gateway",            name = "Home gateway",       group = "home",       kind = "lan",  hosted = "home" },
+  { id = "mail",               name = "Mail (SMTP)",        group = "home",       kind = "lan",  hosted = "home" },
+  { id = "teamspeak",          name = "TeamSpeak files",    group = "home",       kind = "lan",  hosted = "home" },
+  { id = "mqtt",               name = "MQTT broker",        group = "home",       kind = "lan",  hosted = "home" },
+  { id = "temporal",           name = "Temporal",           group = "home",       kind = "lan",  hosted = "home" },
+  { id = "metrics",            name = "Metrics (Mimir)",    group = "monitoring", kind = "lan",  hosted = "home" },
+  { id = "logs",               name = "Logs (Loki)",        group = "monitoring", kind = "lan",  hosted = "home" },
+]
