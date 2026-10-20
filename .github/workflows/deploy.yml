@@ -1,0 +1,74 @@
+name: deploy
+on:
+  push:
+    branches: [main]
+concurrency:
+  group: status-deploy
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.12" }
+      - run: PYTHONPATH=src python3 -m unittest discover -s tests
+
+  promote:
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: point deploy at this commit
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          git checkout --quiet --orphan deploy-pointer
+          git rm -rq --cached .
+          printf '%s\n' "$SHA" > DEPLOY_SHA
+          git add DEPLOY_SHA
+          git -c user.name=status-ci -c user.email=status-ci@users.noreply.github.com commit --quiet -m "deploy $SHA"
+          git push --force origin HEAD:refs/heads/deploy
+
+  apply:
+    needs: promote
+    runs-on: ubuntu-24.04
+    environment: production
+    env:
+      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
+      DESEC_API_TOKEN: ${{ secrets.DESEC_API_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@v2
+        with: { tofu_version: 1.13.1, tofu_wrapper: false }
+      - run: tofu -chdir=infra init -input=false
+      - run: tofu -chdir=infra plan -input=false -no-color -lock-timeout=5m -out=tfplan
+      - name: refuse to replace the droplet (it holds the history)
+        run: tofu -chdir=infra show -json tfplan | python3 infra/plan_guard.py
+      - run: tofu -chdir=infra apply -input=false -no-color -lock-timeout=5m tfplan
+      - name: addresses
+        run: tofu -chdir=infra output
+
+  verify:
+    needs: apply
+    runs-on: ubuntu-24.04
+    steps:
+      - name: droplet serves this commit
+        env:
+          WANT: ${{ github.sha }}
+        run: |
+          for i in $(seq 90); do
+            body=$(curl -fsS --max-time 5 https://status-origin.2143.me/healthz || true)
+            got=$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build_sha",""))' 2>/dev/null || true)
+            [ "$got" = "$WANT" ] && { echo "serving $WANT"; exit 0; }
+            sleep 10
+          done
+          echo "droplet did not report $WANT within 15 min; last /healthz:"; printf '%s\n' "$body"
+          exit 1
