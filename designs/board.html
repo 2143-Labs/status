@@ -67,6 +67,7 @@ a{color:var(--accent)}
 .live-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);position:relative}
 .live-dot::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--ok);animation:ping 2s ease-out infinite}
 .hero[data-tone=stale] .live-dot,.hero[data-tone=stale] .live-dot::after{background:var(--stale);animation:none}
+.live.is-sample .live-dot,.live.is-sample .live-dot::after{background:var(--faint);animation:none}
 @keyframes ping{from{transform:scale(1);opacity:.6}to{transform:scale(2.6);opacity:0}}
 
 /* stats */
@@ -507,11 +508,13 @@ function renderHero(force) {
     hero.dataset.sub = m.sub;
     hero.innerHTML = `<div class="hero-icon" aria-hidden="true"><svg viewBox="0 0 16 16">${HERO_GLYPH[m.tone]}</svg></div>
       <div><h1 id="hero-title">${m.title}</h1><p>${m.sub}</p></div>
-      <div class="live"><span class="live-dot" aria-hidden="true"></span><span id="age"></span></div>`;
+      <div class="live${mode === 'sample' ? ' is-sample' : ''}"><span class="live-dot" aria-hidden="true"></span><span id="age"></span></div>`;
     if (key !== heroKey) $('#announce').textContent = m.title.replace(/&[^;]+;/g, '');
     heroKey = key;
   }
-  $('#age').textContent = `Updated ${agoText(ageS())}`;
+  $('#age').textContent = mode === 'sample'
+    ? `Sample, recorded ${fmt.dayShort(data.generated)} ${fmt.time(data.generated)}`
+    : `Updated ${agoText(ageS())}`;
 }
 function renderStats() {
   const C = data.components, r = RANGES[state.range], since = nowS() - r.secs;
