@@ -9,6 +9,11 @@ metadata:
   namespace: {{ .Values.namespace }}
   labels:
     app: status-design
+  annotations:
+    # Client-side apply copies the whole object into a 256 KiB annotation, which
+    # the sample data outgrows. Server-side apply keeps no such copy; the real
+    # cap is then the 1 MiB ConfigMap limit.
+    argocd.argoproj.io/sync-options: ServerSideApply=true
 data:
 {{- range $path, $_ := .Files.Glob "designs/*.{html,json}" }}
   {{ base $path }}: |
