@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily statusd history snapshot
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=Poll for a new status.2143.me deploy every 60 s
+
+[Timer]
+OnBootSec=60s
+OnUnitInactiveSec=60s
+
+[Install]
+WantedBy=timers.target

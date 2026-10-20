@@ -1,0 +1,22 @@
+[server]
+listen = "127.0.0.1:8080"
+
+[auth]
+# sha256 of the report token, lowercase hex. Empty = every authenticated request gets 401.
+token_sha256 = ""
+
+[paths]
+db        = "/var/lib/status/history.db"
+www       = "/var/lib/status/www"
+snapshots = "/var/lib/status/snapshots"
+deploy_failed = "/var/lib/status/deploy-failed"
+
+[probe]
+interval_seconds    = 30
+timeout_seconds     = 10
+user_agent          = "2143-status/1.0 (+https://status.2143.me)"
+down_after_failures = 2
+stale_seconds       = 120
+
+[page]
+tz = "America/New_York"

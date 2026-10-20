@@ -52,3 +52,6 @@ values.yaml           namespace, host, route name, nginx image
 templates/            configmap · deployment · service · httproute · referencegrant
 designs/              the pages (index.html is the gallery)
 ```
+
+How production runs (endpoints, deploys, rollback, where the history lives):
+[`docs/runbook.md`](docs/runbook.md).

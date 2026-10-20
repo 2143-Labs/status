@@ -1,0 +1,8 @@
+[Unit]
+Description=Deploy the main commit named by branch deploy (status.2143.me)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /opt/status/src/deploy/pull.sh

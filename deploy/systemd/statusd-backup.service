@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily consistent snapshot of the statusd history DB
+
+[Service]
+Type=oneshot
+User=statusd
+Group=statusd
+ExecStart=/usr/local/sbin/statusd-backup
