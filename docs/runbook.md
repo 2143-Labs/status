@@ -88,6 +88,15 @@ non-`main` ref, a job that lost `environment: production`, or a move of
 touching the stored values. Rotation is one KV write: no GitHub change and no
 redeploy of the droplet.
 
+A login that succeeds and is followed by `tofu init` failing with
+`400 ... InvalidArgument: UnknownError` and an empty `<Message>` is not a
+backend problem: the Spaces pair is in the wrong fields. A Spaces *access key*
+is 20 characters and its *secret* is 43, and `bao-env.sh` exports whichever
+value sits under each name, so a swapped pair authenticates as neither and
+Spaces answers a bare 400 instead of an auth error. Swap the two values in
+`consumers/digitalocean-status/ci`; nothing else changes and the next deploy
+picks them up.
+
 ## When the page is red
 
 `curl -sS https://status-origin.2143.me/healthz` first:
