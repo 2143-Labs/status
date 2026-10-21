@@ -15,5 +15,6 @@ terraform {
     skip_metadata_api_check     = true
     skip_s3_checksum            = true
     use_lockfile                = true
+    use_path_style              = true # Spaces answers 400 InvalidArgument to virtual-hosted ListObjectsV2
   }
 }
