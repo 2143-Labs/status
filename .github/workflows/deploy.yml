@@ -46,6 +46,10 @@ jobs:
     env:
       COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
       BAO_ADDR: https://openbao.ts.2143.me
+      # Spaces rejects the AWS SDK's default request/response checksums with
+      # 400 InvalidArgument "UnknownError" (ListObjectsV2 fails during init).
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
     steps:
       - uses: actions/checkout@v7
       - name: tools (nix is already on the runner's PATH, with flakes)
