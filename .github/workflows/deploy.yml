@@ -60,7 +60,16 @@ jobs:
           "$(nix build --no-link --print-out-paths nixpkgs#opentofu)/bin/tofu" version
       - name: credentials from OpenBao
         run: sh infra/bao-env.sh
-      - run: tofu -chdir=infra init -input=false
+      - name: tofu init
+        run: |
+          LOG="$RUNNER_TEMP/tofu-init.log"
+          if TF_LOG=DEBUG TF_LOG_PATH="$LOG" tofu -chdir=infra init -input=false; then
+            exit 0
+          fi
+          echo "--- backend init failed; what Spaces said (auth headers filtered) ---"
+          grep -aiE 'invalidargument|argumentname|argumentvalue|status code|request[_-]?id' "$LOG" \
+            | grep -avE 'authorization|credential=|signature=' | tail -25
+          exit 1
       - run: tofu -chdir=infra plan -input=false -no-color -lock-timeout=5m -out=tfplan
       - name: refuse to replace the droplet (it holds the history)
         run: tofu -chdir=infra show -json tfplan | python3 infra/plan_guard.py
