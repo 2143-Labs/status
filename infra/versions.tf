@@ -15,6 +15,8 @@ terraform {
     skip_metadata_api_check     = true
     skip_s3_checksum            = true
     use_lockfile                = true
-    use_path_style              = true # Spaces answers 400 InvalidArgument to virtual-hosted ListObjectsV2
+    # Spaces serves both addressing styles. This is the one the first successful
+    # deploy used; the 400s that led here were a swapped credential pair, not this.
+    use_path_style = true
   }
 }

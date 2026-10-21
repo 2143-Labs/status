@@ -54,43 +54,13 @@ jobs:
       - uses: actions/checkout@v7
       - name: tools (nix is already on the runner's PATH, with flakes)
         run: |
-          for p in $(nix build --no-link --print-out-paths nixpkgs#opentofu nixpkgs#jq.bin nixpkgs#python3 nixpkgs#awscli2); do
+          for p in $(nix build --no-link --print-out-paths nixpkgs#opentofu nixpkgs#jq.bin nixpkgs#python3); do
             echo "$p/bin" >> "$GITHUB_PATH"
           done
           "$(nix build --no-link --print-out-paths nixpkgs#opentofu)/bin/tofu" version
       - name: credentials from OpenBao
         run: sh infra/bao-env.sh
-      - name: spaces probe (dispatch only; temporary)
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          set +e
-          for v in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
-            val=$(printenv "$v")
-            case "$val" in
-              *[[:space:]]*) echo "$v: contains whitespace or a line break" ;;
-              *) echo "$v: clean, length ${#val}" ;;
-            esac
-          done
-          case "$(printenv AWS_ACCESS_KEY_ID)" in
-            dop_v1_*) echo "AWS_ACCESS_KEY_ID is a DigitalOcean API token, not a Spaces key" ;;
-            DO*)      echo "AWS_ACCESS_KEY_ID has the shape of a Spaces key" ;;
-            *)        echo "AWS_ACCESS_KEY_ID has an unexpected shape" ;;
-          esac
-          aws --endpoint-url https://nyc3.digitaloceanspaces.com s3api head-bucket \
-            --bucket 2143tf --debug 2>&1 \
-            | sed -E 's/Credential=[^,} ]*/Credential=REDACTED/g; s/X-Amz-Signature=[0-9a-f]+/X-Amz-Signature=REDACTED/g' \
-            | grep -iE 'url=|response headers|response body|x-amz-date|host:' | cut -c1-400 | head -20
-          exit 0
-      - name: tofu init
-        run: |
-          LOG="$RUNNER_TEMP/tofu-init.log"
-          if TF_LOG=DEBUG TF_LOG_PATH="$LOG" tofu -chdir=infra init -input=false; then
-            exit 0
-          fi
-          echo "--- backend init failed; what Spaces said (auth headers filtered) ---"
-          grep -aiE 'invalidargument|argumentname|argumentvalue|status code|request[_-]?id' "$LOG" \
-            | grep -avE 'authorization|credential=|signature=' | tail -25
-          exit 1
+      - run: tofu -chdir=infra init -input=false
       - run: tofu -chdir=infra plan -input=false -no-color -lock-timeout=5m -out=tfplan
       - name: refuse to replace the droplet (it holds the history)
         run: tofu -chdir=infra show -json tfplan | python3 infra/plan_guard.py
