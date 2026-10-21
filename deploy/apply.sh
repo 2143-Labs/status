@@ -29,7 +29,8 @@ fail() {  # $1 = reason
   git -C "$src" reset --quiet --hard "$old"
   install -m 0755 "$src/deploy/apply.sh" /usr/local/sbin/statusd-apply   # never keep a broken new copy
   install_tree "$old"
-  { echo "$new"; echo "$1"; journalctl -u statusd -n 40 --no-pager; } > /var/lib/status/deploy-failed
+  # Reason only: /healthz publishes line 2 of this file, and that endpoint is public.
+  { echo "$new"; echo "$1"; } > /var/lib/status/deploy-failed
   logger -t statusd-apply "deploy of $new failed ($1); rolled back to $old"
   exit 1
 }

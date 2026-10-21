@@ -1,0 +1,85 @@
+name: deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: status-deploy
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.12" }
+      - run: PYTHONPATH=src python3 -m unittest discover -s tests
+
+  promote:
+    needs: test
+    if: github.ref == 'refs/heads/main'   # a dispatch on a feature branch must not move the deploy pointer
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: point deploy at this commit
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          git checkout --quiet --orphan deploy-pointer
+          git rm -rq --cached .
+          printf '%s\n' "$SHA" > DEPLOY_SHA
+          git add DEPLOY_SHA
+          git -c user.name=status-ci -c user.email=status-ci@users.noreply.github.com commit --quiet -m "deploy $SHA"
+          git push --force origin HEAD:refs/heads/deploy
+
+  apply:
+    needs: promote
+    runs-on: [self-hosted, nixos]
+    environment: production
+    permissions:
+      id-token: write      # mint the GitHub OIDC token the jwt-github role verifies
+      contents: read
+    env:
+      COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+      BAO_ADDR: https://openbao.ts.2143.me
+    steps:
+      - uses: actions/checkout@v7
+      - name: tools (nix is already on the runner's PATH, with flakes)
+        run: |
+          for p in $(nix build --no-link --print-out-paths nixpkgs#opentofu nixpkgs#jq.bin nixpkgs#python3); do
+            echo "$p/bin" >> "$GITHUB_PATH"
+          done
+          "$(nix build --no-link --print-out-paths nixpkgs#opentofu)/bin/tofu" version
+      - name: credentials from OpenBao
+        run: sh infra/bao-env.sh
+      - run: tofu -chdir=infra init -input=false
+      - run: tofu -chdir=infra plan -input=false -no-color -lock-timeout=5m -out=tfplan
+      - name: refuse to replace the droplet (it holds the history)
+        run: tofu -chdir=infra show -json tfplan | python3 infra/plan_guard.py
+      - run: tofu -chdir=infra apply -input=false -no-color -lock-timeout=5m tfplan
+      - name: addresses
+        run: tofu -chdir=infra output
+      - name: leave no plan or provider cache behind on the runner
+        if: always()
+        run: rm -rf infra/tfplan infra/.terraform
+
+  verify:
+    needs: apply
+    runs-on: ubuntu-24.04
+    steps:
+      - name: droplet serves this commit
+        env:
+          WANT: ${{ github.sha }}
+        run: |
+          for i in $(seq 90); do
+            body=$(curl -fsS --max-time 5 https://status-origin.2143.me/healthz || true)
+            got=$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build_sha",""))' 2>/dev/null || true)
+            [ "$got" = "$WANT" ] && { echo "serving $WANT"; exit 0; }
+            sleep 10
+          done
+          echo "droplet did not report $WANT within 15 min; last /healthz:"; printf '%s\n' "$body"
+          exit 1

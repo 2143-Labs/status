@@ -1,0 +1,31 @@
+#cloud-config
+package_update: true
+packages: [git, python3, sqlite3, curl, ca-certificates, gnupg, tzdata, debian-keyring, debian-archive-keyring, apt-transport-https]
+swap:
+  filename: /swapfile
+  size: 1073741824
+  maxsize: 1073741824
+write_files:
+  - path: /etc/systemd/journald.conf.d/status.conf
+    permissions: "0644"
+    content: |
+      [Journal]
+      SystemMaxUse=200M
+      RuntimeMaxUse=50M
+  - path: /usr/local/sbin/caddy-install.sh
+    permissions: "0755"
+    content: |
+      set -eu
+      export DEBIAN_FRONTEND=noninteractive
+      curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+      curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' > /etc/apt/sources.list.d/caddy-stable.list
+      chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg /etc/apt/sources.list.d/caddy-stable.list
+      apt-get update
+      apt-get install -y caddy
+      apt-get clean
+runcmd:
+  - [systemctl, restart, systemd-journald]
+  - [sh, /usr/local/sbin/caddy-install.sh]
+  - [git, clone, --quiet, --branch, main, "${repo_url}", /opt/status/src]
+  - [sh, -c, "cd /opt/status/src && git fetch --quiet origin +refs/heads/deploy:refs/remotes/origin/deploy && git reset --quiet --hard \"$(git show refs/remotes/origin/deploy:DEPLOY_SHA | tr -d '[:space:]')\""]
+  - [sh, /opt/status/src/deploy/bootstrap.sh]

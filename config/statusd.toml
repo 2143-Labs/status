@@ -3,7 +3,7 @@ listen = "127.0.0.1:8080"
 
 [auth]
 # sha256 of the report token, lowercase hex. Empty = every authenticated request gets 401.
-token_sha256 = ""
+token_sha256 = "51e19810a53831e1fffa4186a9f7a4378069c536b5c66c15fac008425a2ab79e"
 
 [paths]
 db        = "/var/lib/status/history.db"
