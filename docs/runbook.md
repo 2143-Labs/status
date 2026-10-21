@@ -44,6 +44,12 @@ Merging to `main` is the only way to deploy:
    report the new SHA. On any failure it resets the tree, reinstalls the old
    everything, writes `/var/lib/status/deploy-failed` and exits 1.
 
+One org runner serves every repository in the org, so a merge can sit in
+`waiting for a runner` for several minutes before `apply` starts. That is
+queueing, not a failure — the page keeps serving the previous build the whole
+time. A manual `workflow_dispatch` re-runs on `main` only: `promote` is skipped
+on every other ref, so no branch but `main` can move the `deploy` pointer.
+
 A SHA in `deploy-failed` is never retried; the next merge is. `/healthz` reports
 `"last_deploy": "failed"` and the reason in `deploy_error` until a good deploy clears it.
 
@@ -52,6 +58,35 @@ A SHA in `deploy-failed` is never retried; the next merge is. `/healthz` reports
 Revert the change on `main` and merge. That is a normal deploy back to the previous
 code; the droplet's SQLite history is untouched, so no data is lost. Do not edit
 files on the droplet — the next deploy overwrites them.
+
+## CI credentials (OpenBao)
+
+The `apply` job holds no repository or environment secret. It exchanges its
+GitHub OIDC token for a short-lived OpenBao batch token and reads four fields
+from `consumers/digitalocean-status/ci`:
+
+| Field | Used by |
+|---|---|
+| `DIGITALOCEAN_TOKEN` | the `digitalocean` provider |
+| `DESEC_API_TOKEN` | the `desec` provider |
+| `AWS_ACCESS_KEY_ID` | the Spaces backend (`2143tf`) |
+| `AWS_SECRET_ACCESS_KEY` | the Spaces backend (`2143tf`) |
+
+Three objects are configured by hand in OpenBao (deliberately not config-as-code):
+
+- mount `jwt-github`, `oidc_discovery_url` `https://token.actions.githubusercontent.com`
+- policy `ci-status-production`, read on `consumers/data/digitalocean-status/ci`
+  and `consumers/digitalocean-status/ci`
+- role `status-production`: `bound_audiences` `https://openbao.ts.2143.me`;
+  `bound_claims` `repository`, `environment`, `ref`, `workflow_ref`,
+  `runner_environment`; `token_type` `batch`; TTL 300 s
+
+A rejected login means one of those claims stopped matching — a dispatch on a
+non-`main` ref, a job that lost `environment: production`, or a move of
+`deploy.yml`. The error is OpenBao's own (`permission denied`), and re-running
+`bao write auth/jwt-github/role/status-production` re-applies the role without
+touching the stored values. Rotation is one KV write: no GitHub change and no
+redeploy of the droplet.
 
 ## When the page is red
 
