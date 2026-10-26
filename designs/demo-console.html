@@ -120,7 +120,7 @@ function compView(c, e) {
 }
 function history(c, e) {
   const outs = e.outages.filter((o) => o.id === c.id);
-  const cells = c.daily_pct.map((p) => `<i class="${p < 99 ? "x" : p < 100 ? "m" : ""}" title="${p}%"></i>`).join("");
+  const cells = c.daily_pct.map((p) => `<i class="${p < 99 ? "x" : p < 99.9 ? "m" : ""}" title="${p}%"></i>`).join("");
   return `<h2>${esc(c.name)} — 90 days</h2><div class="days" aria-hidden="true">${cells}</div>
   <table><thead><tr><th>start</th><th>duration</th></tr></thead><tbody>${outs.map((o) => `<tr><td>${new Date(o.start * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC</td><td>${o.end == null ? "ongoing" : Math.round((o.end - o.start) / 60) + " min"}</td></tr>`).join("") || "<tr><td colspan=2>No outages in 90 days</td></tr>"}</tbody></table>`;
 }
