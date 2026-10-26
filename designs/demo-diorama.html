@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo · Diorama — 2143 Labs status</title>
+<link rel="stylesheet" href="estate-core.css">
+<style>
+#stage{max-width:90rem;margin:0 auto;padding:1rem}
+.head{display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;align-items:baseline;margin:.3rem 0 .6rem}
+.head h1{font-size:1.4rem;margin:0}.head span{color:var(--muted)}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 19rem;gap:1rem;align-items:start}
+.view{overflow-x:auto;overflow-y:hidden}
+.world{position:relative}
+/* Ground: one 2D isometric projection, no 3D. Carries no text. */
+.scene{position:absolute;left:0;top:0;transform-origin:0 0;transform:matrix(.866,.5,-.866,.5,0,0)}
+.island{position:absolute;background-color:var(--panel);border:1px solid var(--line);box-shadow:5px 5px 0 var(--line);
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:34px 34px}
+.island.planned{border:2px dashed var(--muted);background-color:transparent;box-shadow:none;background-image:none}
+.bldgs,.labels{position:absolute;inset:0}.bldgs{z-index:1}.labels{z-index:2;pointer-events:none}.labels>*{pointer-events:auto}
+.b{position:absolute;width:0;height:0}
+.face{position:absolute;bottom:0;border:1px solid var(--line);display:flex;flex-direction:column-reverse;overflow:hidden;contain:layout paint}
+.face.l{transform-origin:100% 100%;transform:skewY(30deg);background:color-mix(in srgb,var(--panel) 80%,var(--fg) 8%)}
+.face.r{transform-origin:0 100%;transform:skewY(-30deg);background:var(--bg)}
+.face i{display:block;flex:none;border-top:1px solid var(--bg);background:color-mix(in srgb,var(--ok) 55%,var(--bg))}
+.face.r i{background:color-mix(in srgb,var(--ok) 38%,var(--bg))}
+.face i.nr{background:var(--warn)}
+.roof{position:absolute;left:0;transform-origin:0 0;transform:matrix(.866,.5,-.866,.5,0,0);border:1px solid var(--line);background:var(--panel)}
+.b.hot .roof{background:var(--warn)}
+.b.s-down .roof{background:var(--bad)}
+.b.s-unknown .face,.b.s-unknown .roof{background:repeating-linear-gradient(45deg,var(--bg) 0 4px,var(--panel) 4px 8px)!important}
+.b.s-unknown .face i{opacity:.25}
+.b.sel .face,.b.sel .roof{border-color:var(--accent);border-width:2px}
+/* Flat overlay: every label is an untransformed button. */
+.lbl{position:absolute;transform:translate(-50%,-100%);z-index:5;max-width:8.5rem;font:inherit;font-size:.72rem;line-height:1.25;text-align:center;
+  border:1px solid var(--line);border-radius:6px;background:color-mix(in srgb,var(--bg) 90%,transparent);color:var(--fg);padding:.15rem .35rem;cursor:pointer}
+.lbl b{display:block;font-size:.8rem}
+.lbl .hot{color:var(--warn);font-weight:600}
+.ilbl{position:absolute;font-size:.75rem;color:var(--muted);white-space:nowrap;transform:translate(-50%,0)}
+.ghost{position:absolute;z-index:6;width:28px;height:10px;margin:-5px 0 0 -14px;background:var(--info);border-radius:2px;transition:transform .6s ease;pointer-events:none}
+.svcs{list-style:none;display:flex;flex-wrap:wrap;gap:.3rem;padding:0;margin:.6rem 0}
+.svcs li{border:1px solid var(--line);border-radius:999px;padding:0 .55rem;font-size:.8rem;background:var(--panel)}
+.svcs .lamp{display:inline-block;width:.55rem;height:.55rem;border-radius:50%;margin-right:.3rem;background:var(--ok)}
+.svcs .s-degraded .lamp{background:var(--warn)}.svcs .s-down .lamp{background:var(--bad)}.svcs .s-unknown .lamp{background:none;border:1px dashed var(--muted)}
+.tl{margin:.4rem 0 0}
+.tl .cells{display:grid;grid-template-columns:repeat(90,1fr);gap:1px;height:1.4rem}
+.tl .cells i{background:var(--ok)}.tl .cells i.m{background:var(--warn)}.tl .cells i.x{background:var(--bad)}.tl .cells i.cur{outline:2px solid var(--fg);outline-offset:-1px}
+.tl input{width:100%;margin:.2rem 0 0;accent-color:var(--accent)}
+.tl .ends{display:flex;justify-content:space-between;font-size:.75rem;color:var(--muted)}
+.banner{border-left:4px solid var(--info);background:var(--panel);padding:.3rem .7rem;margin:.4rem 0;border-radius:0 6px 6px 0}
+.panel{position:sticky;top:3.2rem;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:.7rem .8rem;font-size:.85rem}
+.panel h2{font-size:1rem;margin:0 0 .3rem}
+.panel .x{float:right;font:inherit;background:none;border:1px solid var(--line);border-radius:4px;color:var(--fg);cursor:pointer}
+.ub{display:grid;grid-template-columns:2.4rem 1fr 2.6rem;gap:.2rem .4rem;align-items:center;margin:.4rem 0}
+.ub span{height:.45rem;background:var(--line);border-radius:2px;overflow:hidden}.ub i{display:block;height:100%;background:var(--ok)}.ub i.w{background:var(--warn)}.ub i.b{background:var(--bad)}
+.panel table{width:100%;border-collapse:collapse;font-size:.78rem}.panel td{padding:.1rem .2rem;border-bottom:1px solid var(--line)}
+@media (max-width:1000px){.wrap{grid-template-columns:1fr}.panel{position:static}}
+</style>
+</head>
+<body>
+<div id="scenario-bar"></div>
+<p id="notice" class="mode-notice" hidden></p>
+<main id="stage" aria-describedby="plain-h">
+  <div class="head"><h1>Diorama</h1><span id="sum"></span><span id="ages"></span></div>
+  <div class="wrap">
+    <div>
+      <div class="view"><div class="world" id="world"><div class="scene" id="scene"></div><div class="bldgs" id="bldgs" aria-hidden="true"></div><div class="labels" id="labels"></div></div></div>
+      <p class="banner" id="banner" hidden></p>
+      <ul class="svcs" id="svcs" aria-label="Services"></ul>
+      <div class="tl"><div class="cells" id="cells" aria-hidden="true"></div>
+        <input type="range" id="scrub" min="0" max="89" value="89" aria-label="Replay day (89 = live)">
+        <div class="ends"><span id="d0"></span><span>drag or use ←/→ to replay · Esc returns to live</span><span>now</span></div></div>
+    </div>
+    <aside class="panel" id="panel" aria-live="polite"><p>Select a building (machine) to see its specs and the workloads it is hosting. Floors are workloads sized by RAM request; the empty shell above them is free capacity.</p></aside>
+  </div>
+</main>
+<section id="plain" class="plain" aria-labelledby="plain-h"><h2 id="plain-h">All data as tables</h2></section>
+<noscript><p>This view needs JavaScript. <a href="live-normal.html">Plain status page</a>.</p></noscript>
+<script type="module">
+import { start, renderPlain, scenarioBar, mountModes, stateWord, fmtBytes, fmtPct, fmtAge, esc } from "./estate-core.js";
+
+const $ = (s) => document.querySelector(s);
+const stage = $("#stage"), plain = $("#plain");
+const mode = mountModes({ stage, plain, notice: $("#notice") });
+scenarioBar($("#scenario-bar"));
+const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+const sk = (s) => (["up", "degraded", "down"].includes(s) ? s : "unknown");
+const T = 34;                        // world px per tile
+const CELL = 4;                      // tiles per building plot
+// Island placement in tiles: [x0, y0, cols, rows]
+const ISLANDS = { house: [0, 0, 3, 2], nyc1: [14, 0, 2, 1], tor1: [14, 6, 1, 1], ash: [24, 0, 1, 1] };
+let est = null, builtFor = "", sel = null, day = 89, ox = 0, oy = 0;
+const B = new Map(); const prevNode = new Map();
+
+const project = (x, y) => ({ x: ox + 0.866 * (x - y), y: oy + 0.5 * (x + y) });
+const heightOf = (n) => Math.round(20 + 18 * Math.log2(Math.max(1, n.ram_bytes / (256 * 1024 * 1024))));
+const sideOf = (n) => Math.max(1, Math.min(2.6, Math.sqrt(n.cpu_cores / 4)));
+const grade = (p) => (p >= 90 ? "b" : p >= 75 ? "w" : "");
+
+function build(e) {
+  builtFor = e.layout + e.nodes.map((n) => n.id).join();
+  const scene = $("#scene"), bl = $("#bldgs"), lab = $("#labels");
+  scene.textContent = bl.textContent = lab.textContent = ""; B.clear();
+  // Bounds of every island corner + tallest building, to size the world box.
+  let minX = 0, maxX = 0, maxY = 0;
+  for (const s of e.sites) { const [x0, y0, c, r] = ISLANDS[s.id] || [0, 0, 1, 1]; const w = (c * CELL + 1) * T, h = (r * CELL + 1) * T;
+    for (const [x, y] of [[x0 * T, y0 * T + h], [x0 * T + w, y0 * T]]) { minX = Math.min(minX, 0.866 * (x - y)); maxX = Math.max(maxX, 0.866 * (x - y)); }
+    maxY = Math.max(maxY, 0.5 * (x0 * T + w + y0 * T + h)); }
+  ox = -minX + 20; oy = 150;
+  const world = $("#world"); world.style.width = maxX - minX + 60 + "px"; world.style.height = oy + maxY + 30 + "px";
+  scene.style.left = ox + "px"; scene.style.top = oy + "px";
+  for (const s of e.sites) {
+    const [x0, y0, c, r] = ISLANDS[s.id] || [0, 0, 1, 1];
+    const w = (c * CELL + 1) * T, h = (r * CELL + 1) * T;
+    const isl = document.createElement("div");
+    isl.className = "island" + (s.planned ? " planned" : "");
+    Object.assign(isl.style, { left: x0 * T + "px", top: y0 * T + "px", width: w + "px", height: h + "px" });
+    scene.append(isl);
+    const p = project(x0 * T, y0 * T + h);
+    const il = document.createElement("div"); il.className = "ilbl";
+    const prov = e.providers.find((v) => v.id === s.provider);
+    il.textContent = `${prov ? prov.name + " · " : ""}${s.name}${s.planned ? " · planned" : ""}`;
+    il.style.left = p.x + 30 + "px"; il.style.top = p.y + 6 + "px"; lab.append(il);
+    const ns = e.nodes.filter((n) => n.site === s.id);
+    ns.forEach((n, i) => {
+      const side = sideOf(n) * T, H = heightOf(n);
+      const cx = (x0 + 0.5 + (i % c) * CELL + CELL / 2) * T, cy = (y0 + 0.5 + Math.floor(i / c) * CELL + CELL / 2) * T;
+      const f = project(cx + side / 2, cy + side / 2);      // front-bottom vertex
+      const hw = 0.866 * side;
+      const b = document.createElement("div"); b.className = "b";
+      b.style.left = f.x + "px"; b.style.top = f.y + "px"; b.style.zIndex = Math.round(cx + cy);
+      b.innerHTML = `<div class="face l" style="left:${-hw}px;width:${hw}px;height:${H}px"></div><div class="face r" style="left:0;width:${hw}px;height:${H}px"></div><div class="roof" style="top:${-H - side}px;width:${side}px;height:${side}px"></div>`;
+      bl.append(b);
+      const l = document.createElement("button"); l.type = "button"; l.className = "lbl";
+      l.style.left = f.x + "px"; l.style.top = f.y - H - side - 4 + "px";
+      l.addEventListener("click", () => select(n.id));
+      lab.append(l);
+      B.set(n.id, { b, l, H, top: { x: f.x, y: f.y - H - side / 2 } });
+    });
+  }
+}
+
+function update(e) {
+  est = e;
+  renderPlain(e, plain);
+  if (mode === "plain") return;
+  if (builtFor !== e.layout + e.nodes.map((n) => n.id).join()) build(e);
+  for (const n of e.nodes) {
+    const o = B.get(n.id); if (!o) continue;
+    const ws = e.workloads.filter((w) => w.node === n.id).sort((a, b) => b.ram_req_bytes - a.ram_req_bytes);
+    const floors = ws.map((w) => `<i class="${w.ready ? "" : "nr"}" style="height:${Math.max(2, (o.H * w.ram_req_bytes) / n.ram_bytes).toFixed(1)}px"></i>`).join("");
+    o.b.querySelectorAll(".face").forEach((f) => (f.innerHTML = floors));
+    const hot = n.ram_pct >= 90 || n.disk_pct >= 90;
+    o.b.className = `b s-${sk(n.state)}${hot ? " hot" : ""}${sel === n.id ? " sel" : ""}`;
+    const hotTxt = n.disk_pct >= 90 ? `disk ${fmtPct(n.disk_pct)}` : n.ram_pct >= 90 ? `RAM ${fmtPct(n.ram_pct)}` : "";
+    o.l.innerHTML = `<b>${esc(n.name)}</b><span class="st st-${sk(n.state)}">${stateWord(n.state)}</span><br>${fmtPct(n.cpu_pct)} · ${fmtPct(n.ram_pct)} · ${fmtPct(n.disk_pct)}${hotTxt ? `<br><span class="hot">! ${hotTxt}</span>` : ""}<br>${n.age_s == null ? "not measured" : fmtAge(n.age_s)}${n.public_ip_locked ? '<br><span class="chip locked">Sign in to reveal</span>' : ""}`;
+    o.l.setAttribute("aria-label", `${n.name}: ${stateWord(n.state)}, cpu ${fmtPct(n.cpu_pct)}, ram ${fmtPct(n.ram_pct)}, disk ${fmtPct(n.disk_pct)}${hotTxt ? ", warning " + hotTxt : ""}`);
+    o.l.setAttribute("aria-pressed", String(sel === n.id));
+  }
+  // Fungible tenants: a workload that changed node visibly lifts out and drops in.
+  for (const w of e.workloads) {
+    const p = prevNode.get(w.id);
+    if (p && p !== w.node && !reduce.matches && B.get(p) && B.get(w.node)) fly(B.get(p).top, B.get(w.node).top);
+    prevNode.set(w.id, w.node);
+  }
+  timeline(e);
+  services(e);
+  const up = e.nodes.filter((n) => n.state === "up").length;
+  $("#sum").textContent = `${up}/${e.nodes.length} machines up · ${e.workloads.length} workloads · layout: ${e.layout === "target" ? "Target" : "Today"}`;
+  $("#ages").textContent = `pite last report ${fmtAge(e.home_age_s)}${e.sample_age_s ? " · data " + fmtAge(e.sample_age_s) : ""}${e.load_error ? " · " + e.load_error : ""}`;
+  if (sel) panel();
+}
+
+function fly(a, b) {
+  const g = document.createElement("div"); g.className = "ghost";
+  g.style.left = a.x + "px"; g.style.top = a.y + "px";
+  $("#labels").append(g);
+  requestAnimationFrame(() => requestAnimationFrame(() => { g.style.transform = `translate(${b.x - a.x}px, ${b.y - a.y}px)`; }));
+  setTimeout(() => g.remove(), 700);
+}
+
+const dayState = (p) => (p == null ? "unknown" : p >= 99.9 ? "up" : p >= 99 ? "degraded" : "down");
+function timeline(e) {
+  const cells = $("#cells");
+  const worst = Array.from({ length: 90 }, (_, d) => Math.min(...e.components.map((c) => c.daily_pct[d] ?? 100)));
+  if (cells.children.length !== 90) cells.innerHTML = "<i></i>".repeat(90);
+  [...cells.children].forEach((c, d) => { c.className = (worst[d] < 99 ? "x" : worst[d] < 99.9 ? "m" : "") + (d === day && day < 89 ? " cur" : ""); c.title = worst[d] + "%"; });
+  $("#d0").textContent = e.days_start;
+  const b = $("#banner");
+  if (day < 89) { b.hidden = false; b.textContent = `Replaying ${dateOf(e, day)} — press Esc to return to live`; } else b.hidden = true;
+}
+const dateOf = (e, d) => new Date(Date.parse(e.days_start + "T00:00:00Z") + d * 864e5).toISOString().slice(0, 10);
+
+function services(e) {
+  $("#svcs").innerHTML = e.components.map((c) => {
+    const s = day < 89 ? dayState(c.daily_pct[day]) : c.state;
+    return `<li class="s-${sk(s)}"><span class="lamp" aria-hidden="true"></span><a href="#row-component-${esc(c.id)}">${esc(c.name)}</a> <span class="st st-${sk(s)}">${stateWord(s)}</span>${day < 89 ? ` · ${c.daily_pct[day]}%` : ""}</li>`;
+  }).join("");
+}
+
+function select(id) { sel = sel === id ? null : id; if (!sel) return closePanel(); panel(); update(est); }
+function closePanel() {
+  const id = sel; sel = null;
+  $("#panel").innerHTML = "<p>Select a building (machine) to see its specs and the workloads it is hosting.</p>";
+  if (est) update(est);
+  if (id && B.get(id)) B.get(id).l.focus();
+}
+function panel() {
+  const n = est.nodes.find((x) => x.id === sel); if (!n) return closePanel();
+  const ws = est.workloads.filter((w) => w.node === n.id).sort((a, b) => b.ram_req_bytes - a.ram_req_bytes);
+  const ub = (k, p) => `<span>${k}</span><span><i class="${grade(p)}" style="width:${p}%"></i></span><span>${fmtPct(p)}</span>`;
+  const hadX = document.activeElement?.classList.contains("x");
+  $("#panel").innerHTML = `<button type="button" class="x" aria-label="Close">Esc</button><h2>${esc(n.name)}</h2>
+    <p><span class="st st-${sk(n.state)}">${stateWord(n.state)}</span> · ${esc(n.site)} · ${esc(n.role)} · ${n.arch}<br>
+    ${n.lan_ip ? esc(n.lan_ip) : "—"}${n.public_ip_locked ? ' <span class="chip locked">Sign in to reveal</span>' : ""}<br>
+    ${n.cpu_cores} cores · ${fmtBytes(n.ram_bytes)} RAM · ${fmtBytes(n.disk_bytes)} disk<br>reported ${n.age_s == null ? "not measured" : fmtAge(n.age_s)}</p>
+    <div class="ub">${ub("cpu", n.cpu_pct)}${ub("ram", n.ram_pct)}${ub("disk", n.disk_pct)}</div>
+    <table><tbody>${ws.map((w) => `<tr><td>${esc(w.name)}</td><td>${fmtBytes(w.ram_req_bytes)} req · ${w.ram_bytes == null ? "?" : fmtBytes(w.ram_bytes)} used</td><td>${w.ready ? "ready" : "not ready"} · ${w.restarts}↻</td></tr>`).join("") || "<tr><td>No workloads</td></tr>"}</tbody></table>
+    <p><a href="#row-node-${esc(n.id)}">Show in table</a></p>`;
+  $("#panel .x").addEventListener("click", closePanel);
+  if (hadX) $("#panel .x").focus();
+}
+
+$("#scrub").addEventListener("input", (ev) => { day = +ev.target.value; if (est) { timeline(est); services(est); } });
+addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  if (sel) closePanel();
+  else if (day < 89) { day = 89; $("#scrub").value = 89; timeline(est); services(est); }
+});
+
+start(update);
+</script>
+</body>
+</html>
