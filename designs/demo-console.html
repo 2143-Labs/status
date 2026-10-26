@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo · Console — 2143 Labs status</title>
+<link rel="stylesheet" href="estate-core.css">
+<style>
+#stage{max-width:84rem;margin:0 auto;padding:1rem;font-family:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;font-size:.86rem}
+.top{display:flex;gap:1rem;align-items:center;margin-bottom:.8rem}
+.top h1{font-size:1.2rem;margin:0}
+.top .hint{color:var(--muted)}
+.top .open{margin-left:auto;font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:6px;padding:.2rem .6rem;cursor:pointer}
+.alarms{display:flex;flex-wrap:wrap;gap:.35rem;min-height:2rem;padding:.4rem;border:1px solid var(--line);border-radius:8px;background:var(--panel);margin-bottom:1rem}
+.alarm{font:inherit;border:1px solid currentColor;border-radius:999px;padding:0 .55rem;background:var(--bg);cursor:pointer}
+.alarm.s-down{color:var(--bad)}.alarm.s-degraded{color:var(--warn)}.alarm.s-unknown{color:var(--muted);border-style:dashed}
+.alarms .clear{color:var(--ok);padding:0 .3rem}
+.grid{display:grid;grid-template-columns:minmax(16rem,22rem) 1fr;gap:1rem;align-items:start}
+.sys{display:grid;grid-template-columns:repeat(auto-fill,minmax(6.6rem,1fr));gap:.45rem}
+.sq{font:inherit;color:inherit;text-align:left;border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:.35rem .45rem;cursor:pointer;contain:layout paint}
+.sq .nm{display:flex;justify-content:space-between;font-weight:600}
+.sq .led{width:.6rem;height:.6rem;border-radius:50%;background:var(--ok);display:inline-block;align-self:center}
+.sq.s-degraded .led{background:var(--warn)}.sq.s-down .led{background:var(--bad)}
+.sq.s-unknown{background:repeating-linear-gradient(45deg,var(--bg) 0 5px,var(--panel) 5px 10px)}
+.sq.s-unknown .led{background:none;border:1px dashed var(--muted)}
+.mb{display:grid;grid-template-columns:1.6rem 1fr;gap:.1rem .3rem;align-items:center;margin-top:.25rem;font-size:.7rem;color:var(--muted)}
+.mb span{height:.35rem;background:var(--line);border-radius:2px;overflow:hidden}
+.mb i{display:block;height:100%;background:var(--ok)}.mb i.w{background:var(--warn)}.mb i.b{background:var(--bad)}
+.sq .age{font-size:.7rem;color:var(--muted)}
+.radar{position:relative;margin-top:1rem;width:7rem;height:7rem;border-radius:50%;border:1px solid var(--line);background:radial-gradient(circle,var(--panel) 0 30%,transparent 31% 60%,var(--panel) 61%)}
+.radar .arm{position:absolute;left:50%;top:50%;width:50%;height:2px;background:var(--accent);transform-origin:0 50%}
+.radar-l{color:var(--muted);font-size:.78rem;margin-top:.35rem}
+.res{border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:.7rem .9rem;min-height:20rem}
+.res h2{font-size:1rem;margin:0 0 .5rem}
+.res .cmd{color:var(--muted);margin:0 0 .5rem}
+.res table{border-collapse:collapse;width:100%}.res td,.res th{text-align:left;padding:.12rem .4rem;border-bottom:1px solid var(--line)}
+.res .bar{display:inline-block;vertical-align:middle;width:8rem;height:.5rem;background:var(--line);border-radius:2px;overflow:hidden}
+.res .bar i{display:block;height:100%;background:var(--accent)}
+.days{display:grid;grid-template-columns:repeat(90,1fr);gap:1px;height:1.6rem;margin:.4rem 0}
+.days i{background:var(--ok)}.days i.m{background:var(--warn)}.days i.x{background:var(--bad)}
+dialog{border:1px solid var(--line);border-radius:10px;padding:0;width:min(36rem,92vw);background:var(--bg);color:var(--fg);font-family:ui-monospace,Menlo,Consolas,monospace}
+dialog::backdrop{background:rgb(0 0 0 / .35)}
+dialog input{width:100%;font:inherit;font-size:1rem;padding:.6rem .8rem;border:0;border-bottom:1px solid var(--line);background:var(--bg);color:var(--fg)}
+dialog input:focus-visible{outline:none}
+dialog ul{list-style:none;margin:0;padding:.3rem 0;max-height:22rem;overflow:auto}
+dialog li{padding:.2rem .8rem;cursor:pointer}
+dialog li[aria-selected="true"]{background:var(--accent);color:var(--bg)}
+@media (max-width:760px){.grid{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.radar .arm{transform:rotate(-90deg)!important}}
+</style>
+</head>
+<body>
+<div id="scenario-bar"></div>
+<p id="notice" class="mode-notice" hidden></p>
+<main id="stage" aria-describedby="plain-h">
+  <div class="top"><h1>Console</h1><span class="hint">Press <kbd>/</kbd> or <kbd>Ctrl</kbd>+<kbd>K</kbd> for commands</span><button type="button" class="open" id="open">/ command</button></div>
+  <div class="alarms" id="alarms" aria-label="Alarms" aria-live="polite"></div>
+  <div class="grid">
+    <div><div class="sys" id="sys" aria-label="Systems"></div><div class="radar" aria-hidden="true"><div class="arm" id="arm"></div></div><div class="radar-l" id="radarl"></div></div>
+    <section class="res" id="res" aria-live="polite" tabindex="-1"></section>
+  </div>
+</main>
+<section id="plain" class="plain" aria-labelledby="plain-h"><h2 id="plain-h">All data as tables</h2></section>
+<noscript><p>This view needs JavaScript. <a href="live-normal.html">Plain status page</a>.</p></noscript>
+<dialog id="pal" aria-label="Command palette"><input id="q" autocomplete="off" spellcheck="false" placeholder="type a command…" role="combobox" aria-controls="list" aria-expanded="true"><ul id="list" role="listbox"></ul></dialog>
+<script type="module">
+import { start, renderPlain, scenarioBar, mountModes, stateWord, fmtBytes, fmtPct, fmtMs, fmtAge, esc } from "./estate-core.js";
+import { SCENARIOS } from "./estate-sim.js";
+
+const $ = (s) => document.querySelector(s);
+const stage = $("#stage"), plain = $("#plain"), res = $("#res"), pal = $("#pal"), q = $("#q"), list = $("#list");
+const mode = mountModes({ stage, plain, notice: $("#notice") });
+scenarioBar($("#scenario-bar"));
+const sk = (s) => (["up", "degraded", "down"].includes(s) ? s : "unknown");
+const badge = (s) => `<span class="st st-${sk(s)}">${stateWord(s)}</span>`;
+const g = (p) => (p >= 90 ? "b" : p >= 75 ? "w" : "");
+const bar = (p) => `<span class="bar"><i style="width:${Math.min(100, p || 0)}%"></i></span> ${fmtPct(p)}`;
+let est = null, last = null, sel = 0, matches = [];
+const firstSeen = new Map();   // alarm key -> generated when first seen
+const squares = new Map();
+
+// ---------- commands ----------
+function commands(e) {
+  const c = [];
+  for (const n of e.nodes) c.push(`node ${n.id}`, `workloads on ${n.id}`);
+  for (const x of e.components) {
+    c.push(`component ${x.id}`, `history ${x.id}`);
+    for (const w of ["24h", "7d", "30d", "90d"]) c.push(`uptime ${x.id} ${w}`);
+  }
+  for (const h of e.hops) c.push(`hop ${h.id}`);
+  c.push("down", "slowest hop", "fullest disk", "busiest cpu", "stale");
+  for (const n of [...new Set(e.workloads.map((w) => w.name))]) c.push(`where is ${n}`);
+  for (const s of SCENARIOS) c.push(`scenario ${s}`);
+  return c;
+}
+
+const NOT_FOUND = (cmd) => `<p>No match for <code>${esc(cmd)}</code>. Press <kbd>/</kbd> to see commands.</p>`;
+function nodeView(n, e) {
+  const ws = e.workloads.filter((w) => w.node === n.id);
+  return `<h2>${esc(n.name)} ${badge(n.state)}</h2>
+  <table><tbody>
+  <tr><th>site · role</th><td>${esc(n.site)} · ${esc(n.role)} · ${n.arch}</td></tr>
+  <tr><th>LAN IP</th><td>${n.lan_ip ? esc(n.lan_ip) : "—"}${n.public_ip_locked ? ' <span class="chip locked">Sign in to reveal</span>' : ""}</td></tr>
+  <tr><th>spec</th><td>${n.cpu_cores} cores · ${fmtBytes(n.ram_bytes)} RAM · ${fmtBytes(n.disk_bytes)} disk</td></tr>
+  <tr><th>cpu</th><td>${bar(n.cpu_pct)} · load ${n.load1}</td></tr>
+  <tr><th>ram</th><td>${bar(n.ram_pct)}</td></tr>
+  <tr><th>disk</th><td>${bar(n.disk_pct)}</td></tr>
+  <tr><th>reported</th><td>${n.age_s == null ? "not measured" : fmtAge(n.age_s)}</td></tr>
+  <tr><th>workloads</th><td>${ws.length} — ${ws.map((w) => esc(w.name)).join(", ")}</td></tr></tbody></table>
+  <p><a href="#row-node-${esc(n.id)}">Show in table</a></p>`;
+}
+function compView(c, e) {
+  return `<h2>${esc(c.name)} ${badge(c.state)}</h2><table><tbody>
+  <tr><th>latency</th><td>${fmtMs(c.latency_ms)}</td></tr>
+  <tr><th>uptime</th><td>24h ${c.uptime["24h"]}% · 7d ${c.uptime["7d"]}% · 30d ${c.uptime["30d"]}% · 90d ${c.uptime["90d"]}%</td></tr>
+  <tr><th>cert</th><td>${c.cert_days == null ? "—" : c.cert_days + " days"}</td></tr>
+  <tr><th>path</th><td>${c.via.map(esc).join(" → ")}</td></tr>
+  <tr><th>runs on</th><td>${[...new Set(e.workloads.filter((w) => w.component === c.id).map((w) => w.node))].map(esc).join(", ") || "—"}</td></tr></tbody></table>
+  <p><a href="#row-component-${esc(c.id)}">Show in table</a></p>`;
+}
+function history(c, e) {
+  const outs = e.outages.filter((o) => o.id === c.id);
+  const cells = c.daily_pct.map((p) => `<i class="${p < 99 ? "x" : p < 100 ? "m" : ""}" title="${p}%"></i>`).join("");
+  return `<h2>${esc(c.name)} — 90 days</h2><div class="days" aria-hidden="true">${cells}</div>
+  <table><thead><tr><th>start</th><th>duration</th></tr></thead><tbody>${outs.map((o) => `<tr><td>${new Date(o.start * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC</td><td>${o.end == null ? "ongoing" : Math.round((o.end - o.start) / 60) + " min"}</td></tr>`).join("") || "<tr><td colspan=2>No outages in 90 days</td></tr>"}</tbody></table>`;
+}
+const listTable = (rows, head) => `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.join("") || `<tr><td colspan=${head.length}>Nothing</td></tr>`}</tbody></table>`;
+
+function run(cmd, e = est) {
+  const m = (re) => cmd.match(re);
+  let r;
+  if ((r = m(/^node (\S+)$/))) { const n = e.nodes.find((x) => x.id === r[1]); return n ? nodeView(n, e) : NOT_FOUND(cmd); }
+  if ((r = m(/^component (\S+)$/))) { const c = e.components.find((x) => x.id === r[1]); return c ? compView(c, e) : NOT_FOUND(cmd); }
+  if ((r = m(/^history (\S+)$/))) { const c = e.components.find((x) => x.id === r[1]); return c ? history(c, e) : NOT_FOUND(cmd); }
+  if ((r = m(/^uptime (\S+) (24h|7d|30d|90d)$/))) { const c = e.components.find((x) => x.id === r[1]); return c ? `<h2>${esc(c.name)} uptime ${r[2]}</h2><p style="font-size:2rem;margin:.2rem 0">${c.uptime[r[2]]}%</p>${badge(c.state)}` : NOT_FOUND(cmd); }
+  if ((r = m(/^hop (\S+)$/))) { const h = e.hops.find((x) => x.id === r[1]); return h ? `<h2>${esc(h.from)} → ${esc(h.to)} ${badge(h.state)}</h2><p>${esc(h.label)} · ${h.kind} · ${fmtMs(h.latency_ms)}</p><p>Carries: ${e.components.filter((c) => c.via.includes(h.id)).map((c) => esc(c.name)).join(", ") || "—"}</p><p><a href="#row-hop-${esc(h.id)}">Show in table</a></p>` : NOT_FOUND(cmd); }
+  if ((r = m(/^workloads on (\S+)$/))) { const ws = e.workloads.filter((w) => w.node === r[1]); return `<h2>Workloads on ${esc(r[1])}</h2>` + listTable(ws.map((w) => `<tr><td>${esc(w.name)}</td><td>${w.cpu_req_m}m / ${fmtBytes(w.ram_req_bytes)}</td><td>${w.cpu_m ?? "?"}m / ${fmtBytes(w.ram_bytes)}</td><td>${w.ready ? "ready" : "not ready"}</td><td>${w.restarts} restarts</td><td>${esc(w.version)}</td></tr>`), ["name", "requests", "using", "ready", "restarts", "version"]); }
+  if ((r = m(/^where is (.+)$/))) { const ws = e.workloads.filter((w) => w.name === r[1]); return `<h2>Where is ${esc(r[1])}</h2>` + listTable(ws.map((w) => `<tr><td>${esc(w.node)}</td><td>replica ${w.replica}</td><td>${w.ready ? "ready" : "not ready"}</td></tr>`), ["node", "replica", "ready"]); }
+  if (cmd === "down") { const rows = [...e.components.filter((c) => c.state !== "up").map((c) => `<tr><td>component</td><td>${esc(c.name)}</td><td>${badge(c.state)}</td></tr>`), ...e.nodes.filter((n) => n.state !== "up").map((n) => `<tr><td>node</td><td>${esc(n.name)}</td><td>${badge(n.state)}</td></tr>`), ...e.hops.filter((h) => h.state !== "up").map((h) => `<tr><td>hop</td><td>${esc(h.id)}</td><td>${badge(h.state)}</td></tr>`)]; return "<h2>Not up</h2>" + listTable(rows, ["kind", "name", "state"]); }
+  if (cmd === "slowest hop") { const hs = e.hops.filter((h) => h.latency_ms != null).sort((a, b) => b.latency_ms - a.latency_ms); return "<h2>Slowest hops</h2>" + listTable(hs.slice(0, 6).map((h) => `<tr><td>${esc(h.id)}</td><td>${fmtMs(h.latency_ms)}</td><td>${badge(h.state)}</td></tr>`), ["hop", "latency", "state"]); }
+  if (cmd === "fullest disk" || cmd === "busiest cpu") { const k = cmd === "fullest disk" ? "disk_pct" : "cpu_pct"; const ns = [...e.nodes].sort((a, b) => b[k] - a[k]); return `<h2>${cmd === "fullest disk" ? "Fullest disks" : "Busiest CPUs"}</h2>` + listTable(ns.map((n) => `<tr><td>${esc(n.name)}</td><td>${bar(n[k])}</td></tr>`), ["node", k === "disk_pct" ? "disk" : "cpu"]); }
+  if (cmd === "stale") { const rows = [...e.nodes.filter((n) => n.state === "unknown" || n.age_s > 60).map((n) => `<tr><td>node</td><td>${esc(n.name)}</td><td>${n.age_s == null ? "never" : fmtAge(n.age_s)}</td></tr>`), ...e.components.filter((c) => c.state === "unknown").map((c) => `<tr><td>component</td><td>${esc(c.name)}</td><td>${fmtAge(e.home_age_s)}</td></tr>`)]; if (e.sample_age_s > 60) rows.unshift(`<tr><td>data</td><td>whole estate</td><td>${fmtAge(e.sample_age_s)}</td></tr>`); return "<h2>Stale</h2>" + listTable(rows, ["kind", "name", "last report"]); }
+  if ((r = m(/^scenario (\S+)$/)) && SCENARIOS.includes(r[1])) { const p = new URLSearchParams(location.search); p.set("scenario", r[1]); p.delete("t"); location.search = p; return "<p>Loading…</p>"; }
+  return NOT_FOUND(cmd);
+}
+
+function exec(cmd, push = true) {
+  last = cmd;
+  if (push) history_replace(cmd);
+  draw();
+  res.focus({ preventScroll: true });
+}
+function history_replace(cmd) { window.history.replaceState(null, "", location.search + "#cmd=" + encodeURIComponent(cmd)); }
+function draw() {
+  if (!est) return;
+  res.innerHTML = last ? `<p class="cmd">&gt; ${esc(last)}</p>${run(last)}` : `<h2>Overview</h2>${run("down")}<p class="cmd">Try: <code>slowest hop</code>, <code>fullest disk</code>, <code>history mail</code>, <code>where is traefik</code>.</p>`;
+}
+
+// ---------- palette ----------
+function openPal() { if (!est) return; q.value = ""; filter(); pal.showModal(); q.focus(); }
+function filter() {
+  const t = q.value.trim().toLowerCase();
+  const all = commands(est);
+  matches = (t ? all.filter((c) => c.toLowerCase().includes(t)) : all).slice(0, 40);
+  if (t && !matches.length) matches = [q.value.trim()];
+  sel = 0; paint();
+}
+function paint() {
+  list.innerHTML = matches.map((c, i) => `<li role="option" id="o${i}" aria-selected="${i === sel}">${esc(c)}</li>`).join("");
+  q.setAttribute("aria-activedescendant", "o" + sel);
+  list.children[sel]?.scrollIntoView({ block: "nearest" });
+}
+q.addEventListener("input", filter);
+q.addEventListener("keydown", (ev) => {
+  if (ev.key === "ArrowDown") { sel = Math.min(matches.length - 1, sel + 1); paint(); ev.preventDefault(); }
+  else if (ev.key === "ArrowUp") { sel = Math.max(0, sel - 1); paint(); ev.preventDefault(); }
+  else if (ev.key === "Enter") { const c = matches[sel]; pal.close(); if (c) exec(c); ev.preventDefault(); }
+});
+list.addEventListener("click", (ev) => { const li = ev.target.closest("li"); if (li) { pal.close(); exec(li.textContent); } });
+$("#open").addEventListener("click", openPal);
+addEventListener("keydown", (ev) => {
+  const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName);
+  if ((ev.key === "/" && !typing) || (ev.key.toLowerCase() === "k" && (ev.ctrlKey || ev.metaKey))) { ev.preventDefault(); if (!pal.open) openPal(); }
+  else if (ev.key === "Escape" && !pal.open && last) { last = null; history_replace(""); window.history.replaceState(null, "", location.search); draw(); }
+});
+
+// ---------- live surfaces ----------
+function alarms(e) {
+  const now = e.generated, items = [];
+  const add = (key, label, state, cmd) => { if (!firstSeen.has(key)) firstSeen.set(key, now); items.push({ key, label, state, cmd, t: firstSeen.get(key) }); };
+  for (const c of e.components) if (c.state !== "up") add("c:" + c.id, c.name, c.state, `component ${c.id}`);
+  for (const n of e.nodes) if (n.state !== "up" && !(n.state === "unknown" && n.age_s == null)) add("n:" + n.id, n.name, n.state, `node ${n.id}`);
+  for (const h of e.hops) if (h.state !== "up" && h.state !== "unknown") add("h:" + h.id, h.id, h.state, `hop ${h.id}`);
+  const live = new Set(items.map((i) => i.key));
+  for (const k of [...firstSeen.keys()]) if (!live.has(k)) firstSeen.delete(k);
+  items.sort((a, b) => b.t - a.t || (a.key < b.key ? -1 : 1));
+  const el = $("#alarms");
+  const sig = items.map((i) => i.key + i.state).join();
+  if (el.dataset.sig === sig) return;
+  el.dataset.sig = sig;
+  el.innerHTML = items.length ? items.map((i) => `<button type="button" class="alarm s-${sk(i.state)}" data-cmd="${esc(i.cmd)}">${esc(i.label)} · ${stateWord(i.state)}</button>`).join("") : `<span class="clear">✓ All clear</span>`;
+  el.querySelectorAll(".alarm").forEach((b) => b.addEventListener("click", () => exec(b.dataset.cmd)));
+}
+function systems(e) {
+  const box = $("#sys"), ids = new Set(e.nodes.map((n) => n.id));
+  for (const [id, b] of squares) if (!ids.has(id)) { b.remove(); squares.delete(id); }
+  for (const n of e.nodes) {
+    let b = squares.get(n.id);
+    if (!b) {
+      b = document.createElement("button"); b.type = "button"; b.className = "sq";
+      b.innerHTML = `<span class="nm"><span></span><span class="led"></span></span><span class="mb"><b>cpu</b><span><i></i></span><b>ram</b><span><i></i></span><b>dsk</b><span><i></i></span></span><span class="age"></span>`;
+      b.addEventListener("click", () => exec(`node ${n.id}`));
+      box.append(b); squares.set(n.id, b);
+    }
+    b.className = "sq s-" + sk(n.state);
+    b.querySelector(".nm span").textContent = n.name;
+    const is = b.querySelectorAll("i");
+    [n.cpu_pct, n.ram_pct, n.disk_pct].forEach((p, i) => { is[i].style.width = p + "%"; is[i].className = g(p); });
+    b.querySelector(".age").textContent = n.state === "unknown" ? `Not reporting · ${n.age_s == null ? "never" : fmtAge(n.age_s)}` : n.age_s == null ? "not measured" : fmtAge(n.age_s);
+    b.setAttribute("aria-label", `${n.name}: ${stateWord(n.state)}, cpu ${fmtPct(n.cpu_pct)}, ram ${fmtPct(n.ram_pct)}, disk ${fmtPct(n.disk_pct)}`);
+  }
+}
+
+function update(e) {
+  est = e;
+  renderPlain(e, plain);
+  if (mode === "plain") return;
+  alarms(e); systems(e);
+  $("#radarl").textContent = `pite last report ${fmtAge(e.home_age_s)}${e.sample_age_s ? " · data " + fmtAge(e.sample_age_s) : ""}${e.load_error ? " · " + e.load_error : ""}`;
+  if (!pal.open && !res.contains(document.activeElement) || document.activeElement === res) draw();
+}
+
+// Radar arm: one rotation per 30 s probe interval, driven by the single rAF loop.
+const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+const arm = $("#arm");
+function frame(ts) { if (!reduce.matches) arm.style.transform = `rotate(${((ts / 30000) % 1) * 360 - 90}deg)`; requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
+
+const h = decodeURIComponent((location.hash.match(/^#cmd=(.*)$/) || [])[1] || "");
+if (h) last = h;
+start(update);
+</script>
+</body>
+</html>
