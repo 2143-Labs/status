@@ -1,0 +1,57 @@
+/* estate-core.css — the single designs-side palette plus shared demo chrome.
+   Tokens copied verbatim from designs/map.html. Demos import this; never restate :root. */
+:root{
+  --bg:#fbfaf7;--fg:#1d1d1f;--muted:#5f6368;--line:#d9d6cf;--panel:#f1efe9;--code:#ece9e1;
+  --accent:#2457c5;--ok:#1f7a4d;--warn:#9a5800;--bad:#b3261e;--info:#5b3fb0;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#141517;--fg:#e6e6e3;--muted:#a3a3a0;--line:#34363b;--panel:#1c1e22;--code:#23262b;
+  --accent:#7aa2ff;--ok:#5cc28e;--warn:#e0a34a;--bad:#f2766d;--info:#b49cff;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+.scenario-bar{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;gap:.4rem 1rem;align-items:center;
+  padding:.45rem 1rem;background:var(--panel);border-bottom:1px solid var(--line);font-size:.85rem}
+.scenario-bar label{display:inline-flex;gap:.35rem;align-items:center;color:var(--muted)}
+.scenario-bar select,.scenario-bar input,.scenario-bar button{font:inherit;color:var(--fg);background:var(--bg);
+  border:1px solid var(--line);border-radius:6px;padding:.1rem .4rem}
+.scenario-bar .toggle{display:inline-flex}
+.scenario-bar .toggle button{border-radius:0;cursor:pointer}
+.scenario-bar .toggle button:first-child{border-radius:6px 0 0 6px}
+.scenario-bar .toggle button:last-child{border-radius:0 6px 6px 0;border-left:0}
+.scenario-bar .toggle button[aria-pressed="true"]{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.scenario-bar button:disabled,.scenario-bar select:disabled,.scenario-bar input:disabled{opacity:.55;cursor:not-allowed}
+.scenario-bar .clock{margin-left:auto;font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--muted)}
+
+.mode-notice{margin:.6rem 1rem;padding:.5rem .8rem;border-left:4px solid var(--warn);background:var(--panel);border-radius:0 6px 6px 0}
+
+.plain{max-width:72rem;margin:2rem auto;padding:0 1rem 3rem}
+.plain h2{font-size:1.2rem;border-top:1px solid var(--line);padding-top:1rem}
+.plain table{width:100%;border-collapse:collapse;margin:0 0 1.6rem;font-size:.88rem}
+.plain caption{text-align:left;font-weight:600;padding:.3rem 0}
+.plain th,.plain td{text-align:left;padding:.3rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
+.plain thead th{color:var(--muted);font-weight:600}
+.plain tr:target{background:var(--code)}
+.plain-note{color:var(--warn)}
+
+.chip{display:inline-block;font-size:.75rem;padding:0 .45rem;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+.chip.locked{border-style:dashed;color:var(--muted)}
+.chip.locked::before{content:"🔒\FE0E ";}
+
+.st{font-weight:600;white-space:nowrap}
+.st::before{display:inline-block;width:1.1em;text-align:center}
+.st-up{color:var(--ok)}.st-up::before{content:"✓"}
+.st-degraded{color:var(--warn)}.st-degraded::before{content:"!"}
+.st-down{color:var(--bad)}.st-down::before{content:"✕"}
+.st-unknown{color:var(--muted)}.st-unknown::before{content:"–"}
+
+@media (forced-colors:active){
+  .scenario-bar,.mode-notice,.chip,.plain th,.plain td,[class*="card"],[class*="panel"]{border:1px solid CanvasText}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
