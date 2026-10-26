@@ -74,7 +74,7 @@ import { start, renderPlain, scenarioBar, mountModes, stateWord, fmtBytes, fmtPc
 
 const $ = (s) => document.querySelector(s);
 const stage = $("#stage"), plain = $("#plain"), racksEl = $("#racks"), tip = $("#tip");
-const PROVIDER_SITES = { home: ["house"], do: ["nyc1", "tor1"], hetzner: ["ash"] };
+const sitesOf = (e, pid) => e.sites.filter((s) => s.provider === pid);
 const units = new Map();      // node id -> {el, ...}
 const rackEls = new Map();    // site id -> el
 const prevNode = new Map();   // workload id -> node id
@@ -95,9 +95,8 @@ function buildSkeleton(e) {
     const sec = document.createElement("section");
     sec.className = "provider";
     sec.innerHTML = `<h2>${esc(p.name)}${p.planned ? " · planned" : ""}</h2><div class="sites"></div>`;
-    for (const sid of PROVIDER_SITES[p.id] || []) {
-      const s = e.sites.find((x) => x.id === sid);
-      if (!s) continue;
+    for (const s of sitesOf(e, p.id)) {
+      const sid = s.id;
       const r = document.createElement("div");
       r.className = "rack" + (s.planned ? " planned" : "");
       r.innerHTML = `<h3><span>${esc(s.name)}</span><span class="cnt"></span></h3><div class="slots"></div>${s.planned ? '<div class="empty">planned</div>' : ""}`;
@@ -222,11 +221,12 @@ function update(e) {
     if (open === n.id && document.activeElement?.closest(".detail") !== u.detail) renderDetail(n, u);
   }
   if (open && !units.has(open)) open = null;
-  const house = e.nodes.filter((n) => n.site === "house");
+  const homeSites = new Set(e.sites.filter((s) => s.kind === "home").map((s) => s.id));
+  const house = e.nodes.filter((n) => homeSites.has(n.site));
   const houseReq = e.workloads.filter((w) => house.some((n) => n.id === w.node)).reduce((s, w) => s + w.ram_req_bytes, 0);
   const houseCap = house.reduce((s, n) => s + n.ram_bytes, 0);
   const up = e.nodes.filter((n) => n.state === "up").length;
-  $("#sum").textContent = `${up}/${e.nodes.length} nodes up · ${e.workloads.length} workloads · RAM requested ${Math.round((100 * houseReq) / houseCap)}% of house capacity`;
+  $("#sum").textContent = `${up}/${e.nodes.length} nodes up · ${e.workloads.length} workloads · RAM requested ${Math.round((100 * houseReq) / houseCap)}% of home capacity`;
   $("#comps").innerHTML = e.components.map((c) => `<li class="${c.state === "up" ? "" : "bad"}"><a href="#row-component-${esc(c.id)}">${esc(c.name)}</a> <span class="st st-${["up", "degraded", "down"].includes(c.state) ? c.state : "unknown"}">${stateWord(c.state)}</span></li>`).join("");
   $("#ages").textContent = `pite last report ${fmtAge(e.home_age_s)} · data ${e.sample_age_s ? fmtAge(e.sample_age_s) : "current"}${e.load_error ? " · " + e.load_error : ""}`;
 }
