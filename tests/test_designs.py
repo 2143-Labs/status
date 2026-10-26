@@ -9,7 +9,7 @@ SERVED = ("*.html", "*.json", "*.js", "*.css")
 QUAD = re.compile(r"(?<![\w.v])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.-])")
 TOP_KEYS = {"v", "source", "scenario", "generated", "tz", "probe_interval_s", "home_age_s", "sample_age_s",
             "days_start", "hours_start", "latency_start", "groups", "layout", "providers", "sites", "nodes",
-            "workloads", "components", "hops", "stations", "stats", "outages"}
+            "workloads", "components", "hops", "stations", "routes", "stats", "outages"}
 
 
 def served():

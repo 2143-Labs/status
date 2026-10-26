@@ -13,21 +13,30 @@
  *   groups: [{id, name, note}]                         identical to status.json v1
  *   layout: "today" | "target"                         as built | the ip-hiding north star
  *   providers: [{id, name, planned}]                   one building each: home, do, hetzner
- *   sites: [{id, name, provider, kind: home|cloud, planned}]   one room each: house, nyc1, tor1, ash
+ *   sites: [{id, name, provider, kind: home|cloud, role: origin|edge, planned}]
+ *          one room each: isp-lan (Verizon LAN, outside the MikroTik), house, nyc1, tor1,
+ *          and the edge rooms ash (Hetzner) and do-edge (DO) — the planned CDN home proxies
  *   nodes: [{id, name, site, role: server|agent|droplet|doks|edge, arch, lan_ip (private|null),
  *            cpu_cores, ram_bytes, disk_bytes, cpu_pct, ram_pct, disk_pct, net_rx_bps, net_tx_bps,
  *            load1, temp_c|null, state, age_s, public_ip_locked}]
  *   workloads: [{id, name, namespace, node, replica, cpu_req_m, ram_req_bytes, cpu_m, ram_bytes,
  *                ready, restarts, version, component|null}]      fungible tenants of nodes
- *   components: [status.json v1 component fields unchanged, plus via: [hop id, ...]]
+ *   components: [status.json v1 component fields unchanged, plus via: [hop id, ...],
+ *                route: <route id>|null]                    the traffic family it belongs to
+ *   routes: [{id, kind: request|call, name, from, to, path: [hop id], calls: [route id],
+ *             note, hosts: [hostname], latency_ms|null, state}]
+ *           request = how outside traffic arrives (home-direct, do-only, images, lan-only);
+ *           call = backend-to-backend traffic (images-s3, temporal-grpc, mongo)
  *   hops: [{id, from, to, label, latency_ms|null, state, kind: public|tunnel|lan|probe|report, planned}]
  *   stations: [{id, name, site|null, tier: ingress|compute|service,
- *               kind: internet|lb|gateway|tunnel|router|vip|probe|reporter|edge|connector, planned}]
+ *               kind: internet|isp|lb|gateway|tunnel|tailnet|router|vip|store|host|probe|reporter|edge|connector,
+ *               planned}]
  *   stats: {<component id>: {visitors_7d, requests_24h, ...}}  ({} in a snapshot)
  *   outages: [{id, start, end|null}]                    identical to v1, newest first
  * }
  * state is always one of up | degraded | down | unknown.
  *
+ * Topology (sites, stations, hops, via, routes, hostnames) is data in estate-topology.json.
  * Station/hop ids are load-bearing and differ by layout (`do-lb` and `internet-router`
  * exist only in "today"; edge nodes, connectors and their hops only in "target").
  * No public IP address may ever appear in output: LAN 192.168.* and private 10.* only;
@@ -35,6 +44,8 @@
  *
  * Pure: simulate(args) with equal args returns deep-equal output. Never reads the clock.
  */
+
+import TOPO from "./estate-topology.json" with { type: "json" };
 
 export const SCENARIOS = ["normal", "incident", "home-offline", "stale", "node-pressure", "tunnel-slow", "cert-expiring", "deploy-storm"];
 export const BASE_T = 1792800000;
@@ -94,114 +105,28 @@ const COMPONENTS = [
   ["logs", "Logs (Loki)", "monitoring", "home", null],
 ];
 
-const ALIASES = ["i.2143.me", "i.brick.gay", "i.dsstar.us", "i.9s.pics", "i.0x2b.pics", "i.devolved.us",
-  "i.2143.gay", "i.2143.baby", "i.2143.moe", "i.2143.christmas", "i.prod.john2143.com"];
+const ALIASES = TOPO.hosts.images.slice();
 
-const PROVIDERS = [["home", "Home"], ["do", "DigitalOcean"], ["hetzner", "Hetzner"]];
-const SITES = [
-  ["house", "House", "home", "home"],
-  ["nyc1", "nyc1", "do", "cloud"],
-  ["tor1", "tor1", "do", "cloud"],
-  ["ash", "Ashburn", "hetzner", "cloud"],
-];
-
-// [id, name, site, tier, kind, planned]
-const STATIONS = {
-  today: [
-    ["internet", "Internet", null, "ingress", "internet", false],
-    ["edge-s1", "edge slot s1", "ash", "ingress", "edge", true],
-    ["edge-s2", "edge slot s2", "nyc1", "ingress", "edge", true],
-    ["do-lb", "DO load balancer", "nyc1", "ingress", "lb", false],
-    ["router", "MikroTik RB5009 · 15 port forwards", "house", "ingress", "router", false],
-    ["doks", "DOKS · nginx-gateway-fabric", "nyc1", "compute", "gateway", false],
-    ["traefik", "Traefik VIP 192.168.6.6", "house", "compute", "vip", false],
-    ["wg", "WireGuard 10.99.0.2 ⇄ router", null, "compute", "tunnel", false],
-    ["status-1", "status-1 · statusd", "tor1", "service", "probe", false],
-    ["pite", "pite · home monitor", "house", "service", "reporter", false],
-  ],
-  target: [
-    ["internet", "Internet", null, "ingress", "internet", false],
-    ["edge-s1", "edge slot s1", "ash", "ingress", "edge", false],
-    ["edge-s2", "edge slot s2", "nyc1", "ingress", "edge", false],
-    ["router", "MikroTik RB5009 · no port forwards", "house", "ingress", "router", false],
-    ["conn-home", "edge-connector ×3", "house", "compute", "connector", false],
-    ["conn-do", "edge-connector ×2", "nyc1", "compute", "connector", false],
-    ["traefik", "Traefik VIP 192.168.6.6", "house", "compute", "vip", false],
-    ["doks", "DOKS · nginx-gateway-fabric", "nyc1", "compute", "gateway", false],
-    ["wg", "DO ⇄ home link · home-initiated", null, "compute", "tunnel", false],
-    ["status-1", "status-1 · statusd", "tor1", "service", "probe", false],
-    ["pite", "pite · home monitor", "house", "service", "reporter", false],
-  ],
-};
-
-// [id, from, to, kind, label]
-const HOPS = {
-  today: [
-    ["internet-lb", "internet", "do-lb", "public", "public HTTPS"],
-    ["lb-doks", "do-lb", "doks", "public", "LB → cluster"],
-    ["internet-router", "internet", "router", "public", "home WAN · 15 forwards"],
-    ["router-traefik", "router", "traefik", "lan", "LAN"],
-    ["doks-wg", "doks", "wg", "tunnel", "WireGuard"],
-    ["wg-router", "wg", "router", "tunnel", "WireGuard"],
-    ["probe-public", "status-1", "internet", "probe", "probes"],
-    ["pite-report", "pite", "status-1", "report", "reports"],
-  ],
-  target: [
-    ["internet-s1", "internet", "edge-s1", "public", "public HTTPS"],
-    ["internet-s2", "internet", "edge-s2", "public", "public HTTPS"],
-    ["conn-home-s1", "conn-home", "edge-s1", "tunnel", "dials out"],
-    ["conn-home-s2", "conn-home", "edge-s2", "tunnel", "dials out"],
-    ["conn-do-s1", "conn-do", "edge-s1", "tunnel", "dials out"],
-    ["conn-do-s2", "conn-do", "edge-s2", "tunnel", "dials out"],
-    ["conn-home-traefik", "conn-home", "traefik", "lan", "LAN"],
-    ["conn-do-doks", "conn-do", "doks", "lan", "cluster"],
-    ["router-wg", "router", "wg", "tunnel", "home-initiated"],
-    ["wg-doks", "wg", "doks", "tunnel", "WireGuard"],
-    ["probe-public", "status-1", "internet", "probe", "probes"],
-    ["pite-report", "pite", "status-1", "report", "reports"],
-  ],
-};
-
-const VIA = {
-  today: {
-    "john2143-com": ["internet-router", "router-traefik"],
-    "files-john2143-com": ["internet-router", "router-traefik"],
-    "2143-me": ["internet-lb", "lb-doks"],
-    "2143-me-user": ["internet-lb", "lb-doks"],
-    "i-2143-me": ["internet-lb", "lb-doks"],
-    temporal: ["doks-wg", "wg-router", "router-traefik"],
-  },
-  target: {
-    "john2143-com": ["internet-s1", "conn-home-s1", "conn-home-traefik"],
-    "files-john2143-com": ["internet-s1", "conn-home-s1", "conn-home-traefik"],
-    gateway: ["internet-s1", "conn-home-s1", "conn-home-traefik"],
-    mail: ["internet-s1", "conn-home-s1", "conn-home-traefik"],
-    teamspeak: ["internet-s1", "conn-home-s1", "conn-home-traefik"],
-    mqtt: ["internet-s1", "conn-home-s1", "conn-home-traefik"],
-    "2143-me": ["internet-s2", "conn-do-s2", "conn-do-doks"],
-    "2143-me-user": ["internet-s2", "conn-do-s2", "conn-do-doks"],
-    "i-2143-me": ["internet-s2", "conn-do-s2", "conn-do-doks"],
-    temporal: ["wg-doks", "router-wg", "conn-home-traefik"],
-  },
-};
-const VIA_DEFAULT = { today: ["router-traefik"], target: ["conn-home-traefik"] };
+// Topology is data, shared with scripts/estate_snapshot.py: designs/estate-topology.json.
+const PROVIDERS = TOPO.providers;            // [id, name]
+const SITES = TOPO.sites;                    // [id, name, provider, kind, role]
+const STATIONS = TOPO.stations;              // {layout: [[id, name, site, tier, kind, planned]]}
+const HOPS = TOPO.hops;                      // {layout: [[id, from, to, kind, label]]}
+const strip = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== "*"));
+const VIA = { today: strip(TOPO.via.today), target: strip(TOPO.via.target) };
+const VIA_DEFAULT = { today: TOPO.via.today["*"], target: TOPO.via.target["*"] };
+const ROUTES = TOPO.routes;                  // {layout: [{id, kind, name, from, to, path, calls?, note}]}
 const TUNNEL_HOP = { today: "doks-wg", target: "wg-doks" };
+// Which traffic family each status component belongs to (null = checked on the LAN only).
+const COMPONENT_ROUTE = {
+  "john2143-com": "home-direct", "files-john2143-com": "home-direct",
+  "2143-me": "do-only", "2143-me-user": "do-only", "i-2143-me": "images", temporal: "temporal-grpc",
+};
+const HOME_SITES = new Set(SITES.filter((s) => s[3] === "home").map((s) => s[0]));
 
 // [id, site, role, arch, lan_ip, cores, ram, disk, public_ip_locked]
-const NODES = [
-  ["closet", "house", "server", "amd64", "192.168.5.36", 16, 64 * GiB, 2 * TB, false],
-  ["arch", "house", "server", "amd64", "192.168.5.76", 24, 128 * GiB, 4 * TB, false],
-  ["nas", "house", "server", "amd64", "192.168.5.175", 8, 32 * GiB, 48 * TB, false],
-  ["big", "house", "agent", "amd64", "192.168.5.68", 12, 48 * GiB, 1 * TB, false],
-  ["office", "house", "agent", "amd64", "192.168.5.209", 8, 32 * GiB, 1 * TB, false],
-  ["pite", "house", "agent", "arm64", "192.168.5.9", 4, 8 * GiB, 256 * GB, false],
-  ["doks-1", "nyc1", "doks", "amd64", "10.108.0.2", 2, 4 * GiB, 80 * GB, true],
-  ["status-1", "tor1", "droplet", "amd64", null, 1, 512 * MiB, 10 * GB, true],
-];
-const EDGE_NODES = [
-  ["edge-1", "ash", "edge", "amd64", "10.61.0.1", 2, 2 * GiB, 20 * GB, true],
-  ["edge-2", "nyc1", "edge", "amd64", "10.61.0.2", 2, 2 * GiB, 20 * GB, true],
-];
+const NODES = TOPO.nodes;
+const EDGE_NODES = TOPO.edge_nodes;
 
 // [name, namespace, component, [nodes...]]
 const WORKLOADS = [
@@ -226,6 +151,7 @@ const WORKLOADS = [
   ["site-2143-me", "web", "2143-me", ["doks-1"]],
   ["nginx-gateway-fabric", "nginx-gateway", null, ["doks-1"]],
   ["wireguard-doks", "wireguard", null, ["doks-1"]],
+  ["attic", "attic", null, ["home-pi"]],
 ];
 const TARGET_WORKLOADS = [
   ["edge-connector", "edge", null, ["closet", "arch", "nas", "doks-1", "doks-1"]],
@@ -235,7 +161,7 @@ const TARGET_WORKLOADS = [
 ];
 const REQUESTS = {
   traefik: [100, 128 * MiB], mimir: [500, 2 * GiB], loki: [250, GiB], seaweedfs: [250, GiB],
-  frigate: [1000, 4 * GiB], temporal: [500, GiB], "edge-connector": [50, 64 * MiB],
+  frigate: [1000, 4 * GiB], temporal: [500, GiB], attic: [250, 512 * MiB], "edge-connector": [50, 64 * MiB],
   "nginx-stream": [100, 128 * MiB], coturn: [100, 128 * MiB], derper: [100, 128 * MiB],
 };
 const DEFAULT_REQUEST = [50, 128 * MiB];
@@ -309,8 +235,10 @@ export function simulate({ seed = 1, scenario = "normal", elapsed = 0, layout = 
   const homeAge = homeOffline ? elapsed - 10 : ibetween(live("home-age"), 0, 29);
 
   // Providers and sites: Hetzner/Ashburn exist only as planned in "today".
-  const providers = PROVIDERS.map(([id, name]) => ({ id, name, planned: !target && id === "hetzner" }));
-  const sites = SITES.map(([id, name, provider, kind]) => ({ id, name, provider, kind, planned: !target && id === "ash" }));
+  // Edge sites (the CDN home proxies) are planned until the target layout; a provider is
+  // planned when every one of its sites is.
+  const sites = SITES.map(([id, name, provider, kind, role]) => ({ id, name, provider, kind, role, planned: !target && role === "edge" }));
+  const providers = PROVIDERS.map(([id, name]) => ({ id, name, planned: sites.filter((s) => s.provider === id).every((s) => s.planned) }));
 
   const stations = STATIONS[layout].map(([id, name, site, tier, kind, planned]) => ({ id, name, site, tier, kind, planned }));
 
@@ -326,6 +254,14 @@ export function simulate({ seed = 1, scenario = "normal", elapsed = 0, layout = 
     return { id, from, to, label, latency_ms, state, kind, planned: false };
   });
   const hopById = Object.fromEntries(hops.map((h) => [h.id, h]));
+  const RANK = { up: 0, unknown: 1, degraded: 2, down: 3 };
+  const worst = (states) => states.reduce((a, b) => (RANK[b] > RANK[a] ? b : a), "up");
+  const routes = ROUTES[layout].map((r) => {
+    const hs = r.path.map((id) => hopById[id]);
+    const lat = hs.every((h) => h.latency_ms != null) ? round1(hs.reduce((a, h) => a + h.latency_ms, 0)) : null;
+    return { id: r.id, kind: r.kind, name: r.name, from: r.from, to: r.to, path: r.path.slice(), calls: (r.calls || []).slice(),
+      note: r.note, hosts: (TOPO.hosts[r.id] || []).slice(), latency_ms: lat, state: worst(hs.map((h) => h.state)) };
+  });
 
   // Workloads (placement fixed; fungible: deploy-storm moves grafana).
   const specs = target ? WORKLOADS.concat(TARGET_WORKLOADS) : WORKLOADS;
@@ -370,7 +306,7 @@ export function simulate({ seed = 1, scenario = "normal", elapsed = 0, layout = 
     const r = rng(seed, "node", id);
     const j = live("node-j", id);
     const mine = workloads.filter((w) => w.node === id);
-    const house = site === "house";
+    const house = HOME_SITES.has(site);
     const cpuUsed = mine.reduce((s, w) => s + w.cpu_m, 0);
     const ramUsed = mine.reduce((s, w) => s + w.ram_bytes, 0);
     let cpu_pct = round1(clamp(between(j, 2, 9) + (cpuUsed / (cpu_cores * 1000)) * 100, 0, 100));
@@ -427,6 +363,7 @@ export function simulate({ seed = 1, scenario = "normal", elapsed = 0, layout = 
     };
     if (url) comp.url = url;
     comp.via = via;
+    comp.route = COMPONENT_ROUTE[id] || null;
     return comp;
   });
   if (sc === "incident" && elapsed >= 20) {
@@ -469,10 +406,11 @@ export function simulate({ seed = 1, scenario = "normal", elapsed = 0, layout = 
     components,
     hops,
     stations,
+    routes,
     stats,
     outages,
   };
 }
 
 // Exposed for scripts/estate_snapshot.py parity checks and the tests; not part of the contract.
-export const FIXED = { NODES, STATIONS, HOPS, VIA, VIA_DEFAULT, PROVIDERS, SITES, GROUPS };
+export const FIXED = { NODES, STATIONS, HOPS, VIA, VIA_DEFAULT, PROVIDERS, SITES, GROUPS, ROUTES };

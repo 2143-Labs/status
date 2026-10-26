@@ -1,0 +1,178 @@
+{
+  "_doc": "Fixed topology for the estate contract. Read by designs/estate-sim.js (simulated values) and scripts/estate_snapshot.py (real values). Hostname lists are derived from argo HTTPRoutes and live DNS (2026-10-26); never put a public IP in this file.",
+  "providers": [
+    ["home", "Home"],
+    ["do", "DigitalOcean"],
+    ["hetzner", "Hetzner"]
+  ],
+  "sites": [
+    ["isp-lan", "Verizon LAN", "home", "home", "origin"],
+    ["house", "House LAN", "home", "home", "origin"],
+    ["nyc1", "nyc1", "do", "cloud", "origin"],
+    ["tor1", "tor1", "do", "cloud", "origin"],
+    ["ash", "Ashburn edge", "hetzner", "cloud", "edge"],
+    ["do-edge", "nyc1 edge", "do", "cloud", "edge"]
+  ],
+  "stations": {
+    "today": [
+      ["internet", "Internet", null, "ingress", "internet", false],
+      ["verizon", "Verizon CR1000B · ISP router", "isp-lan", "ingress", "isp", false],
+      ["router", "MikroTik RB5009 · 15 port forwards", "house", "ingress", "router", false],
+      ["do-lb", "DO load balancer", "nyc1", "ingress", "lb", false],
+      ["edge-s1", "edge slot s1 · CDN home proxy", "ash", "ingress", "edge", true],
+      ["edge-s2", "edge slot s2 · CDN home proxy", "do-edge", "ingress", "edge", true],
+      ["tailnet", "Tailnet · LAN only", null, "ingress", "tailnet", false],
+      ["doks", "DOKS · nginx-gateway-fabric", "nyc1", "compute", "gateway", false],
+      ["traefik", "Traefik VIP 192.168.6.6", "house", "compute", "vip", false],
+      ["wg", "WireGuard 10.99.0.2 ⇄ router", null, "compute", "tunnel", false],
+      ["s3", "SeaweedFS S3 · 192.168.6.31", "house", "service", "store", false],
+      ["home-pi", "home-pi · Attic cache", "isp-lan", "service", "host", false],
+      ["status-1", "status-1 · statusd", "tor1", "service", "probe", false],
+      ["pite", "pite · home monitor", "house", "service", "reporter", false]
+    ],
+    "target": [
+      ["internet", "Internet", null, "ingress", "internet", false],
+      ["edge-s1", "edge slot s1 · CDN home proxy", "ash", "ingress", "edge", false],
+      ["edge-s2", "edge slot s2 · CDN home proxy", "do-edge", "ingress", "edge", false],
+      ["verizon", "Verizon CR1000B · no inbound forwards", "isp-lan", "ingress", "isp", false],
+      ["router", "MikroTik RB5009 · no port forwards", "house", "ingress", "router", false],
+      ["tailnet", "Tailnet · LAN only", null, "ingress", "tailnet", false],
+      ["conn-home", "edge-connector ×3", "house", "compute", "connector", false],
+      ["conn-do", "edge-connector ×2", "nyc1", "compute", "connector", false],
+      ["traefik", "Traefik VIP 192.168.6.6", "house", "compute", "vip", false],
+      ["doks", "DOKS · nginx-gateway-fabric", "nyc1", "compute", "gateway", false],
+      ["wg", "DO ⇄ home link · home-initiated", null, "compute", "tunnel", false],
+      ["s3", "SeaweedFS S3 · 192.168.6.31", "house", "service", "store", false],
+      ["home-pi", "home-pi · Attic cache", "isp-lan", "service", "host", false],
+      ["status-1", "status-1 · statusd", "tor1", "service", "probe", false],
+      ["pite", "pite · home monitor", "house", "service", "reporter", false]
+    ]
+  },
+  "hops": {
+    "today": [
+      ["internet-lb", "internet", "do-lb", "public", "public HTTPS"],
+      ["lb-doks", "do-lb", "doks", "public", "LB → cluster"],
+      ["internet-verizon", "internet", "verizon", "public", "home WAN"],
+      ["verizon-router", "verizon", "router", "lan", "double NAT · per-port forwards"],
+      ["verizon-homepi", "verizon", "home-pi", "lan", "Attic :8280"],
+      ["router-traefik", "router", "traefik", "lan", "dst-nat → VIP"],
+      ["router-s3", "router", "s3", "lan", "S3 :8333"],
+      ["tailnet-traefik", "tailnet", "traefik", "tunnel", "tailnet"],
+      ["doks-wg", "doks", "wg", "tunnel", "WireGuard"],
+      ["wg-router", "wg", "router", "tunnel", "WireGuard · home-initiated"],
+      ["probe-public", "status-1", "internet", "probe", "probes"],
+      ["pite-report", "pite", "status-1", "report", "reports"]
+    ],
+    "target": [
+      ["internet-s1", "internet", "edge-s1", "public", "public HTTPS"],
+      ["internet-s2", "internet", "edge-s2", "public", "public HTTPS"],
+      ["conn-home-s1", "conn-home", "edge-s1", "tunnel", "dials out"],
+      ["conn-home-s2", "conn-home", "edge-s2", "tunnel", "dials out"],
+      ["conn-do-s1", "conn-do", "edge-s1", "tunnel", "dials out"],
+      ["conn-do-s2", "conn-do", "edge-s2", "tunnel", "dials out"],
+      ["conn-home-traefik", "conn-home", "traefik", "lan", "LAN"],
+      ["conn-do-doks", "conn-do", "doks", "lan", "cluster"],
+      ["verizon-router", "verizon", "router", "lan", "egress only"],
+      ["verizon-homepi", "verizon", "home-pi", "lan", "Attic :8280"],
+      ["router-s3", "router", "s3", "lan", "S3 :8333"],
+      ["tailnet-traefik", "tailnet", "traefik", "tunnel", "tailnet"],
+      ["router-wg", "router", "wg", "tunnel", "home-initiated"],
+      ["wg-doks", "wg", "doks", "tunnel", "WireGuard"],
+      ["probe-public", "status-1", "internet", "probe", "probes"],
+      ["pite-report", "pite", "status-1", "report", "reports"]
+    ]
+  },
+  "via": {
+    "today": {
+      "john2143-com": ["internet-verizon", "verizon-router", "router-traefik"],
+      "files-john2143-com": ["internet-verizon", "verizon-router", "router-traefik"],
+      "2143-me": ["internet-lb", "lb-doks"],
+      "2143-me-user": ["internet-lb", "lb-doks"],
+      "i-2143-me": ["internet-lb", "lb-doks"],
+      "temporal": ["doks-wg", "wg-router", "router-traefik"],
+      "*": ["router-traefik"]
+    },
+    "target": {
+      "john2143-com": ["internet-s1", "conn-home-s1", "conn-home-traefik"],
+      "files-john2143-com": ["internet-s1", "conn-home-s1", "conn-home-traefik"],
+      "gateway": ["internet-s1", "conn-home-s1", "conn-home-traefik"],
+      "mail": ["internet-s1", "conn-home-s1", "conn-home-traefik"],
+      "teamspeak": ["internet-s1", "conn-home-s1", "conn-home-traefik"],
+      "mqtt": ["internet-s1", "conn-home-s1", "conn-home-traefik"],
+      "2143-me": ["internet-s2", "conn-do-s2", "conn-do-doks"],
+      "2143-me-user": ["internet-s2", "conn-do-s2", "conn-do-doks"],
+      "i-2143-me": ["internet-s2", "conn-do-s2", "conn-do-doks"],
+      "temporal": ["wg-doks", "router-wg", "conn-home-traefik"],
+      "*": ["conn-home-traefik"]
+    }
+  },
+  "routes": {
+    "today": [
+      {"id": "home-direct", "kind": "request", "name": "Straight to home", "from": "internet", "to": "traefik",
+       "path": ["internet-verizon", "verizon-router", "router-traefik"],
+       "note": "DNS points at the home WAN; nothing in DigitalOcean sees these requests."},
+      {"id": "do-only", "kind": "request", "name": "DigitalOcean only", "from": "internet", "to": "doks",
+       "path": ["internet-lb", "lb-doks"], "note": "Served entirely from DOKS."},
+      {"id": "images", "kind": "request", "name": "i.2143.me · edge on DO", "from": "internet", "to": "doks",
+       "path": ["internet-lb", "lb-doks"], "calls": ["images-s3"],
+       "note": "Answered by imageserver on DOKS; a miss calls home S3 over WireGuard."},
+      {"id": "images-s3", "kind": "call", "name": "imageserver → home S3 (on miss)", "from": "doks", "to": "s3",
+       "path": ["doks-wg", "wg-router", "router-s3"], "note": "haproxy :8333 → SeaweedFS VIP."},
+      {"id": "temporal-grpc", "kind": "call", "name": "DO workers → home Temporal", "from": "doks", "to": "router",
+       "path": ["doks-wg", "wg-router"], "note": "haproxy :7233 → Temporal VIP."},
+      {"id": "mongo", "kind": "call", "name": "home worker → DO MongoDB", "from": "router", "to": "doks",
+       "path": ["wg-router", "doks-wg"], "note": "10.99.0.2:32040, home-initiated."},
+      {"id": "lan-only", "kind": "request", "name": "LAN / tailnet only", "from": "tailnet", "to": "traefik",
+       "path": ["tailnet-traefik"], "note": "*.ts.2143.me resolve to private addresses only."}
+    ],
+    "target": [
+      {"id": "home-direct", "kind": "request", "name": "Home via edge", "from": "internet", "to": "traefik",
+       "path": ["internet-s1", "conn-home-s1", "conn-home-traefik"],
+       "note": "Edge proxies terminate public traffic; home connectors dial out to them."},
+      {"id": "do-only", "kind": "request", "name": "DigitalOcean via edge", "from": "internet", "to": "doks",
+       "path": ["internet-s2", "conn-do-s2", "conn-do-doks"], "note": "No public load balancer."},
+      {"id": "images", "kind": "request", "name": "i.2143.me · via edge", "from": "internet", "to": "doks",
+       "path": ["internet-s2", "conn-do-s2", "conn-do-doks"], "calls": ["images-s3"],
+       "note": "Same backend; a miss still calls home S3."},
+      {"id": "images-s3", "kind": "call", "name": "imageserver → home S3 (on miss)", "from": "doks", "to": "s3",
+       "path": ["wg-doks", "router-wg", "router-s3"], "note": "Over the home-initiated link."},
+      {"id": "temporal-grpc", "kind": "call", "name": "DO workers → home Temporal", "from": "doks", "to": "router",
+       "path": ["wg-doks", "router-wg"], "note": "Over the home-initiated link."},
+      {"id": "mongo", "kind": "call", "name": "home worker → DO MongoDB", "from": "router", "to": "doks",
+       "path": ["router-wg", "wg-doks"], "note": "Home-initiated."},
+      {"id": "lan-only", "kind": "request", "name": "LAN / tailnet only", "from": "tailnet", "to": "traefik",
+       "path": ["tailnet-traefik"], "note": "Unchanged."}
+    ]
+  },
+  "hosts": {
+    "home-direct": ["john2143.com", "www.john2143.com", "files.john2143.com", "llm.2143.me", "chat.2143.me", "matrix.2143.me",
+      "tasks.2143.me", "status.2143.me", "status.john2143.com", "images.2143.me", "listen.2143.me", "m.2143.me", "au.2143.me",
+      "anni.2143.me", "net.2143.me", "net.john2143.com", "auth.john2143.com", "cameras.john2143.com", "containerstore.john2143.com",
+      "docs.john2143.com", "element.john2143.com", "factorio.john2143.com", "grafana.john2143.com", "i.john2143.com",
+      "livekit.john2143.com", "mattermost.john2143.com", "mm.timestone.2143.me", "mm.timestone.john2143.com",
+      "openbao.john2143.com", "pelican.john2143.com", "pvp.john2143.com", "seafile.john2143.com", "temporal.john2143.com",
+      "temporal-grpc.john2143.com", "terminals.john2143.com", "turn.john2143.com", "argo-webhook.john2143.com",
+      "applicationset-webhook.john2143.com"],
+    "do-only": ["2143.me", "2143.me/user", "acme.2143.me"],
+    "images": ["i.2143.me", "i.brick.gay", "i.dsstar.us", "i.9s.pics", "i.0x2b.pics", "i.devolved.us", "i.2143.gay",
+      "i.2143.baby", "i.2143.moe", "i.2143.christmas", "i.prod.john2143.com"],
+    "lan-only": ["argocd.ts.2143.me", "cameras.ts.2143.me", "cams.ts.2143.me", "files-ui.ts.2143.me", "home.ts.2143.me",
+      "immich.ts.2143.me", "longhorn.ts.2143.me", "mail.ts.2143.me", "openbao.ts.2143.me", "stalwart.ts.2143.me",
+      "temporal.ts.2143.me", "unifi.ts.2143.me"]
+  },
+  "nodes": [
+    ["home-pi", "isp-lan", "standalone", "arm64", "192.168.0.154", 4, 4294967296, 128000000000, false],
+    ["closet", "house", "server", "amd64", "192.168.5.36", 16, 68719476736, 2000000000000, false],
+    ["arch", "house", "server", "amd64", "192.168.5.76", 24, 137438953472, 4000000000000, false],
+    ["nas", "house", "server", "amd64", "192.168.5.175", 8, 34359738368, 48000000000000, false],
+    ["big", "house", "agent", "amd64", "192.168.5.68", 12, 51539607552, 1000000000000, false],
+    ["office", "house", "agent", "amd64", "192.168.5.209", 8, 34359738368, 1000000000000, false],
+    ["pite", "house", "agent", "arm64", "192.168.5.9", 4, 8589934592, 256000000000, false],
+    ["doks-1", "nyc1", "doks", "amd64", "10.108.0.2", 2, 4294967296, 80000000000, true],
+    ["status-1", "tor1", "droplet", "amd64", null, 1, 536870912, 10000000000, true]
+  ],
+  "edge_nodes": [
+    ["edge-1", "ash", "edge", "amd64", "10.61.0.1", 2, 2147483648, 20000000000, true],
+    ["edge-2", "do-edge", "edge", "amd64", "10.61.0.2", 2, 2147483648, 20000000000, true]
+  ]
+}
