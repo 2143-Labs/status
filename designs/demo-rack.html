@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo · Rack — 2143 Labs status</title>
+<link rel="stylesheet" href="estate-core.css">
+<style>
+#stage{max-width:76rem;margin:0 auto;padding:1rem 1rem 0}
+.head{display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;align-items:baseline;margin:.4rem 0 1rem}
+.head h1{font-size:1.4rem;margin:0}
+.head .sum{color:var(--muted)}
+.head label{margin-left:auto;color:var(--muted);font-size:.9rem}
+.head select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px}
+.provider{margin:0 0 1.4rem}
+.provider>h2{font-size:1.05rem;margin:0 0 .5rem;color:var(--muted);font-weight:600;letter-spacing:.03em;text-transform:uppercase}
+.sites{display:flex;flex-wrap:wrap;gap:1rem}
+.rack{flex:1 1 22rem;max-width:40rem;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:.5rem .6rem .7rem}
+.rack>h3{margin:0 0 .4rem;font-size:.95rem;display:flex;justify-content:space-between}
+.rack.planned{border-style:dashed;opacity:.75}
+.rack.planned .empty{height:5.5rem;border:1px dashed var(--line);border-radius:4px;display:grid;place-items:center;color:var(--muted)}
+.unit{border:1px solid var(--line);border-radius:4px;background:var(--bg);margin:0 0 4px;contain:layout paint}
+.unit.u2>.front{min-height:4.1rem}
+.unit.u1>.front{min-height:2.1rem}
+.front{display:grid;grid-template-columns:1.1rem 7.5rem 1fr auto;gap:.15rem .6rem;align-items:center;width:100%;
+  padding:.25rem .5rem;font:inherit;color:inherit;text-align:left;background:none;border:0;cursor:pointer}
+.led{width:.8rem;height:.8rem;border-radius:50%;background:var(--ok);box-shadow:0 0 0 2px var(--bg)}
+.unit.s-degraded .led{background:var(--warn)}.unit.s-down .led{background:var(--bad)}
+.unit.s-unknown .led{background:transparent;border:2px dashed var(--muted)}
+.unit.s-unknown{background:repeating-linear-gradient(45deg,var(--bg) 0 6px,var(--panel) 6px 12px)}
+.front .nm{font-weight:600}
+.front .spec{font-size:.8rem;color:var(--muted)}
+.front .meta{font-size:.8rem;text-align:right}
+.mini{display:flex;gap:3px;grid-column:2/4}
+.mini span{flex:1;height:4px;border-radius:2px;background:var(--line);position:relative;overflow:hidden}
+.mini i{position:absolute;inset:0 auto 0 0;background:var(--ok)}
+.mini i.w{background:var(--warn)}.mini i.b{background:var(--bad)}
+.detail{padding:.3rem .6rem .6rem;border-top:1px solid var(--line)}
+.track{margin:.35rem 0}
+.track .lbl{display:flex;justify-content:space-between;font-size:.8rem;color:var(--muted)}
+.bar{position:relative;display:flex;height:1.35rem;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--panel)}
+.seg{position:relative;height:100%;border:0;border-right:1px solid var(--bg);padding:0;background:color-mix(in srgb,var(--accent) 28%,var(--bg));cursor:default;font:inherit;min-width:2px}
+.seg>i{position:absolute;left:0;bottom:0;height:45%;background:color-mix(in srgb,var(--accent) 70%,var(--bg))}
+.seg.nr{background:color-mix(in srgb,var(--warn) 35%,var(--bg))}
+.seg.hl,.seg:focus-visible{outline:2px solid var(--fg);outline-offset:-2px;z-index:1}
+.bar.thin{height:.45rem}
+.bar.thin>i{display:block;height:100%;background:var(--ok)}
+.bar.thin>i.w{background:var(--warn)}.bar.thin>i.b{background:var(--bad)}
+.detail .acts{display:flex;gap:1rem;font-size:.85rem;margin-top:.4rem}
+.moved{color:var(--info);font-size:.8rem}
+.tip{position:fixed;z-index:60;pointer-events:none;background:var(--fg);color:var(--bg);font-size:.8rem;padding:.2rem .45rem;border-radius:4px;white-space:nowrap}
+.comps{list-style:none;display:flex;flex-wrap:wrap;gap:.35rem;padding:0;margin:0 0 1.2rem}
+.comps li{border:1px solid var(--line);border-radius:999px;padding:.05rem .6rem;font-size:.82rem;background:var(--panel)}
+.comps li.bad{border-color:currentColor}
+.ages{color:var(--muted);font-size:.85rem;margin:.2rem 0 1rem}
+@media (prefers-reduced-motion:no-preference){.bar .seg,.mini i,.bar.thin>i{transition:width .4s ease}}
+</style>
+</head>
+<body>
+<div id="scenario-bar"></div>
+<p id="notice" class="mode-notice" hidden></p>
+<main id="stage" aria-describedby="plain-h">
+  <div class="head"><h1>Rack</h1><span class="sum" id="sum"></span>
+    <label>Sort <select id="sort"><option value="site">by site</option><option value="ram">by RAM pressure</option><option value="cpu">by CPU pressure</option></select></label></div>
+  <p class="ages" id="ages"></p>
+  <ul class="comps" id="comps" aria-label="Services"></ul>
+  <div id="racks"></div>
+</main>
+<section id="plain" class="plain" aria-labelledby="plain-h"><h2 id="plain-h">All data as tables</h2></section>
+<noscript><p>This view needs JavaScript. <a href="live-normal.html">Plain status page</a>.</p></noscript>
+<div class="tip" id="tip" hidden></div>
+<script type="module">
+import { start, renderPlain, scenarioBar, mountModes, stateWord, fmtBytes, fmtPct, fmtAge, esc } from "./estate-core.js";
+
+const $ = (s) => document.querySelector(s);
+const stage = $("#stage"), plain = $("#plain"), racksEl = $("#racks"), tip = $("#tip");
+const PROVIDER_SITES = { home: ["house"], do: ["nyc1", "tor1"], hetzner: ["ash"] };
+const units = new Map();      // node id -> {el, ...}
+const rackEls = new Map();    // site id -> el
+const prevNode = new Map();   // workload id -> node id
+const movedAt = new Map();    // workload id -> {from, until}
+let mode = "full", open = null, est = null, hlName = null;
+
+mode = mountModes({ stage, plain, notice: $("#notice") });
+scenarioBar($("#scenario-bar"));
+$("#sort").addEventListener("change", () => est && layout(est));
+
+const grade = (p) => (p >= 90 ? "b" : p >= 75 ? "w" : "");
+const cores = (m) => (m / 1000).toFixed(m >= 1000 ? 1 : 2);
+
+function buildSkeleton(e) {
+  racksEl.textContent = "";
+  rackEls.clear();
+  for (const p of e.providers) {
+    const sec = document.createElement("section");
+    sec.className = "provider";
+    sec.innerHTML = `<h2>${esc(p.name)}${p.planned ? " · planned" : ""}</h2><div class="sites"></div>`;
+    for (const sid of PROVIDER_SITES[p.id] || []) {
+      const s = e.sites.find((x) => x.id === sid);
+      if (!s) continue;
+      const r = document.createElement("div");
+      r.className = "rack" + (s.planned ? " planned" : "");
+      r.innerHTML = `<h3><span>${esc(s.name)}</span><span class="cnt"></span></h3><div class="slots"></div>${s.planned ? '<div class="empty">planned</div>' : ""}`;
+      sec.querySelector(".sites").append(r);
+      rackEls.set(sid, r);
+    }
+    racksEl.append(sec);
+  }
+}
+
+function unitFor(n) {
+  let u = units.get(n.id);
+  if (u) return u;
+  const el = document.createElement("div");
+  el.className = "unit";
+  el.innerHTML = `<button type="button" class="front" aria-expanded="false">
+    <span class="led" aria-hidden="true"></span><span class="nm"></span><span class="spec"></span><span class="meta"></span>
+    <span></span><span class="mini" aria-hidden="true"><span><i></i></span><span><i></i></span><span><i></i></span></span></button>
+    <div class="detail" hidden></div>`;
+  el.querySelector(".front").addEventListener("click", () => toggle(n.id));
+  u = { el, front: el.querySelector(".front"), detail: el.querySelector(".detail") };
+  units.set(n.id, u);
+  return u;
+}
+
+function toggle(id) {
+  const prev = open;
+  open = open === id ? null : id;
+  if (prev && units.get(prev)) {
+    units.get(prev).detail.hidden = true;
+    units.get(prev).front.setAttribute("aria-expanded", "false");
+  }
+  if (open) {
+    const u = units.get(open);
+    u.detail.hidden = false;
+    u.front.setAttribute("aria-expanded", "true");
+    renderDetail(est.nodes.find((n) => n.id === open), u);
+  }
+}
+
+function layout(e) {
+  const by = $("#sort").value;
+  const key = (n) => (by === "ram" ? -n.ram_pct : by === "cpu" ? -n.cpu_pct : 0);
+  const live = new Set(e.nodes.map((n) => n.id));
+  for (const [id, u] of units) if (!live.has(id)) { u.el.remove(); units.delete(id); }
+  for (const [sid, r] of rackEls) {
+    const slots = r.querySelector(".slots");
+    const ns = e.nodes.filter((n) => n.site === sid).sort((a, b) => key(a) - key(b));
+    ns.forEach((n) => slots.append(unitFor(n).el));
+    r.querySelector(".cnt").textContent = ns.length ? `${ns.length} unit${ns.length > 1 ? "s" : ""}` : "";
+  }
+}
+
+function renderDetail(n, u) {
+  const ws = est.workloads.filter((w) => w.node === n.id).sort((a, b) => b.ram_req_bytes - a.ram_req_bytes);
+  const reqC = ws.reduce((s, w) => s + w.cpu_req_m, 0), reqR = ws.reduce((s, w) => s + w.ram_req_bytes, 0);
+  const seg = (w, total, req, use) => {
+    const wpct = (100 * req) / total, upct = req ? Math.min(100, (100 * use) / req) : 0;
+    return `<button type="button" class="seg${w.ready ? "" : " nr"}${hlName === w.name ? " hl" : ""}" data-w="${esc(w.id)}" data-name="${esc(w.name)}" style="width:${wpct.toFixed(2)}%" aria-label="${esc(w.name)}"><i style="width:100%;height:${upct.toFixed(0)}%"></i></button>`;
+  };
+  const moved = ws.filter((w) => movedAt.has(w.id)).map((w) => `<div class="moved">${esc(w.name)} moved from ${esc(movedAt.get(w.id).from)}</div>`).join("");
+  const nCores = n.cpu_cores * 1000;
+  u.detail.innerHTML = `
+    <div class="track"><div class="lbl"><span>CPU · requested ${cores(reqC)} of ${n.cpu_cores} cores</span><span>${fmtPct(n.cpu_pct)} busy</span></div>
+      <div class="bar">${ws.map((w) => seg(w, nCores, w.cpu_req_m, w.cpu_m ?? 0)).join("")}</div></div>
+    <div class="track"><div class="lbl"><span>RAM · requested ${fmtBytes(reqR)} of ${fmtBytes(n.ram_bytes)}</span><span>${fmtPct(n.ram_pct)} used</span></div>
+      <div class="bar">${ws.map((w) => seg(w, n.ram_bytes, w.ram_req_bytes, w.ram_bytes ?? 0)).join("")}</div></div>
+    <div class="track"><div class="lbl"><span>Disk · ${fmtBytes(n.disk_bytes)}</span><span>${fmtPct(n.disk_pct)}</span></div>
+      <div class="bar thin"><i class="${grade(n.disk_pct)}" style="width:${n.disk_pct}%"></i></div></div>
+    ${moved}
+    <div class="acts"><span>${ws.length} workload${ws.length === 1 ? "" : "s"} · load ${n.load1}</span><a href="#row-node-${esc(n.id)}">Show in table</a></div>`;
+  u.detail.querySelectorAll(".seg").forEach((s) => {
+    const w = ws.find((x) => x.id === s.dataset.w);
+    const show = (ev) => {
+      hlName = w.name;
+      highlight();
+      const r = s.getBoundingClientRect();
+      tip.textContent = `${w.name} · req ${w.cpu_req_m}m / ${fmtBytes(w.ram_req_bytes)} · using ${w.cpu_m ?? "?"}m / ${fmtBytes(w.ram_bytes)} · ${w.version ? "v" + w.version.split(":").pop() : "—"} · ${w.restarts} restarts${w.ready ? "" : " · not ready"}`;
+      tip.hidden = false;
+      tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, r.left) + "px";
+      tip.style.top = r.bottom + 6 + "px";
+    };
+    const hide = () => { hlName = null; highlight(); tip.hidden = true; };
+    s.addEventListener("mouseenter", show); s.addEventListener("focus", show);
+    s.addEventListener("mouseleave", hide); s.addEventListener("blur", hide);
+  });
+}
+
+// Same workload name on every node lights up: replicas are interchangeable tenants.
+function highlight() {
+  document.querySelectorAll(".seg").forEach((s) => s.classList.toggle("hl", s.dataset.name === hlName));
+  for (const n of est.nodes) {
+    const has = hlName && est.workloads.some((w) => w.node === n.id && w.name === hlName);
+    units.get(n.id)?.el.style.setProperty("outline", has ? "2px solid var(--accent)" : "");
+  }
+}
+
+function update(e) {
+  const first = !est || est.layout !== e.layout;
+  est = e;
+  renderPlain(e, plain);
+  if (mode === "plain") return;
+  const now = e.generated;
+  for (const w of e.workloads) {
+    const p = prevNode.get(w.id);
+    if (p && p !== w.node) movedAt.set(w.id, { from: p, until: now + 10 });
+    prevNode.set(w.id, w.node);
+  }
+  for (const [id, m] of movedAt) if (m.until <= now) movedAt.delete(id);
+  if (first) buildSkeleton(e);
+  layout(e);
+  for (const n of e.nodes) {
+    const u = unitFor(n);
+    u.el.className = `unit ${n.role === "server" ? "u2" : "u1"} s-${["up", "degraded", "down"].includes(n.state) ? n.state : "unknown"}`;
+    const q = (s) => u.front.querySelector(s);
+    q(".nm").textContent = n.name;
+    q(".spec").innerHTML = `${n.lan_ip ? esc(n.lan_ip) : "—"}${n.public_ip_locked ? ' <span class="chip locked">Sign in to reveal</span>' : ""} · ${n.arch} · ${n.cpu_cores}c / ${fmtBytes(n.ram_bytes)} / ${fmtBytes(n.disk_bytes)}`;
+    q(".meta").innerHTML = `<span class="st st-${n.state === "up" || n.state === "degraded" || n.state === "down" ? n.state : "unknown"}">${stateWord(n.state)}</span><br>${n.temp_c != null ? n.temp_c + " °C · " : ""}${n.age_s == null ? "not measured" : fmtAge(n.age_s)}`;
+    const bars = q(".mini").querySelectorAll("i");
+    [n.cpu_pct, n.ram_pct, n.disk_pct].forEach((p, i) => { bars[i].style.width = p + "%"; bars[i].className = grade(p); });
+    u.front.setAttribute("aria-label", `${n.name}, ${stateWord(n.state)}, CPU ${fmtPct(n.cpu_pct)}, RAM ${fmtPct(n.ram_pct)}, disk ${fmtPct(n.disk_pct)}`);
+    if (open === n.id && document.activeElement?.closest(".detail") !== u.detail) renderDetail(n, u);
+  }
+  if (open && !units.has(open)) open = null;
+  const house = e.nodes.filter((n) => n.site === "house");
+  const houseReq = e.workloads.filter((w) => house.some((n) => n.id === w.node)).reduce((s, w) => s + w.ram_req_bytes, 0);
+  const houseCap = house.reduce((s, n) => s + n.ram_bytes, 0);
+  const up = e.nodes.filter((n) => n.state === "up").length;
+  $("#sum").textContent = `${up}/${e.nodes.length} nodes up · ${e.workloads.length} workloads · RAM requested ${Math.round((100 * houseReq) / houseCap)}% of house capacity`;
+  $("#comps").innerHTML = e.components.map((c) => `<li class="${c.state === "up" ? "" : "bad"}"><a href="#row-component-${esc(c.id)}">${esc(c.name)}</a> <span class="st st-${["up", "degraded", "down"].includes(c.state) ? c.state : "unknown"}">${stateWord(c.state)}</span></li>`).join("");
+  $("#ages").textContent = `pite last report ${fmtAge(e.home_age_s)} · data ${e.sample_age_s ? fmtAge(e.sample_age_s) : "current"}${e.load_error ? " · " + e.load_error : ""}`;
+}
+
+addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && open) {
+    const id = open;
+    toggle(id);
+    units.get(id)?.front.focus();
+  }
+});
+
+start(update);
+</script>
+</body>
+</html>
