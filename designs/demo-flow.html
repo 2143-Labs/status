@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo · Flow — 2143 Labs status</title>
+<link rel="stylesheet" href="estate-core.css">
+<style>
+#stage{max-width:84rem;margin:0 auto;padding:1rem}
+.head{display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;align-items:baseline;margin:.3rem 0 1rem}
+.head h1{font-size:1.4rem;margin:0}.head span{color:var(--muted)}
+.wrap{display:grid;grid-template-columns:1fr;gap:1rem}
+.flow{position:relative;min-width:0;overflow-x:auto;display:grid;gap:3.2rem 4.5rem;align-items:center;padding:.5rem}
+.lane-label{grid-column:1/-1;color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;border-top:1px dashed var(--line);padding-top:.5rem;margin-bottom:-2.2rem}
+.card{position:relative;z-index:2;contain:layout paint;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:.45rem .6rem;text-align:left;font:inherit;color:inherit;cursor:pointer;min-width:0}
+.card.planned{border-style:dashed;opacity:.65}
+.card .nm{font-weight:600;font-size:.88rem;display:block}
+.card .sub{font-size:.75rem;color:var(--muted);display:block}
+.card .badge{position:absolute;top:-.6rem;right:.4rem;font-size:.72rem;padding:0 .4rem;border-radius:999px;background:var(--bg);border:1px solid var(--line)}
+.card .badge.bad{border-color:var(--bad);color:var(--bad)}
+.card ul{list-style:none;margin:.25rem 0 0;padding:0;font-size:.75rem}
+.card li{display:flex;justify-content:space-between;gap:.4rem}
+.card details summary{cursor:pointer;color:var(--accent);font-size:.72rem}
+.card.svc{background:var(--bg)}
+.card.s-down{border-color:var(--bad)}.card.s-degraded{border-color:var(--warn)}
+.card.s-unknown{background:repeating-linear-gradient(45deg,var(--bg) 0 6px,var(--panel) 6px 12px)}
+.dim .card:not(.on),.dim .link:not(.on){opacity:.3}
+.links{position:absolute;inset:0;z-index:1;pointer-events:none}
+.link{position:absolute;transform-origin:0 50%;background:var(--muted);border-radius:4px}
+.link.k-public{background:var(--accent)}.link.k-tunnel{background:var(--ok)}
+.link.k-probe,.link.k-report{background:transparent;border-top:2px dotted var(--muted)}
+.link.null{background:transparent;border-top:2px dotted var(--muted)}
+.link.st-degraded-l{background:var(--warn)}.link.st-down-l{background:var(--bad)}
+.link .ms{position:absolute;left:50%;top:-1.25rem;transform:translateX(-50%);font-size:.7rem;background:var(--bg);padding:0 .25rem;border-radius:3px;white-space:nowrap;color:var(--fg)}
+.link .lb{position:absolute;left:50%;top:.35rem;transform:translateX(-50%);font-size:.65rem;color:var(--muted);white-space:nowrap}
+.dot{position:absolute;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:var(--fg);opacity:.75;will-change:transform}
+.dot.red{background:var(--bad)}
+.insp{min-height:2.6rem;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:.7rem .8rem;font-size:.86rem}
+.insp h2{font-size:1rem;margin:0 0 .4rem}
+.insp table{width:auto;min-width:50%;border-collapse:collapse}.insp td{padding:.1rem .2rem;border-bottom:1px solid var(--line)}
+.insp .x{float:right;font:inherit;background:none;border:1px solid var(--line);border-radius:4px;cursor:pointer;color:var(--fg)}
+@media (max-width:900px){.wrap{grid-template-columns:1fr}.flow{grid-template-columns:1fr!important;gap:2.4rem}.flow>.card,.flow>.lane-label{grid-column:1!important;grid-row:auto!important;margin:0 auto 0 0;max-width:24rem}.link .lb{display:none}.insp{position:static}}
+@media (prefers-reduced-motion:reduce){.dot{display:none}}
+</style>
+</head>
+<body>
+<div id="scenario-bar"></div>
+<p id="notice" class="mode-notice" hidden></p>
+<main id="stage" aria-describedby="plain-h">
+  <div class="head"><h1>Flow</h1><span id="sum"></span><span id="ages"></span></div>
+  <div class="wrap">
+    <aside class="insp" id="insp" aria-live="polite"><p>Select a station or service to inspect it. Esc clears.</p></aside>
+    <div class="flow" id="flow"><div class="links" id="links" aria-hidden="true"></div></div>
+  </div>
+</main>
+<section id="plain" class="plain" aria-labelledby="plain-h"><h2 id="plain-h">All data as tables</h2></section>
+<noscript><p>This view needs JavaScript. <a href="live-normal.html">Plain status page</a>.</p></noscript>
+<script type="module">
+import { start, renderPlain, scenarioBar, mountModes, stateWord, fmtMs, fmtAge, esc } from "./estate-core.js";
+
+const $ = (s) => document.querySelector(s);
+const stage = $("#stage"), plain = $("#plain"), flow = $("#flow"), linksEl = $("#links"), insp = $("#insp");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+let mode = mountModes({ stage, plain, notice: $("#notice") });
+scenarioBar($("#scenario-bar"));
+
+let est = null, builtFor = null, sel = null;
+const cards = new Map(), links = new Map();
+const OBS = new Set(["probe", "report"]);
+const sk = (s) => (["up", "degraded", "down"].includes(s) ? s : "unknown");
+
+// Column = longest hop distance from internet over the request graph (observer hops excluded).
+function columns(e) {
+  const out = new Map(), col = new Map([["internet", 0]]);
+  for (const h of e.hops) if (!OBS.has(h.kind)) (out.get(h.from) || out.set(h.from, []).get(h.from)).push(h.to);
+  // Connectors dial out to edges; traffic flows edge -> connector, so reverse "dials out" hops for layout.
+  const edges = e.hops.filter((h) => !OBS.has(h.kind)).map((h) => (h.label === "dials out" ? [h.to, h.from] : [h.from, h.to]));
+  for (let i = 0; i < e.stations.length; i++)
+    for (const [a, b] of edges) if (col.has(a) && (col.get(b) ?? -1) < col.get(a) + 1) col.set(b, col.get(a) + 1);
+  for (const s of e.stations) if (!col.has(s.id)) col.set(s.id, s.kind === "edge" ? 1 : 0);
+  return col;
+}
+
+function compsThrough(e, sid) {
+  const hopIds = new Set(e.hops.filter((h) => h.from === sid || h.to === sid).map((h) => h.id));
+  return e.components.filter((c) => c.via.some((h) => hopIds.has(h)));
+}
+
+function build(e) {
+  builtFor = e.layout;
+  [...flow.querySelectorAll(".card,.lane-label")].forEach((n) => n.remove());
+  cards.clear(); links.clear(); linksEl.textContent = "";
+  const col = columns(e);
+  const reqStations = e.stations.filter((s) => !["probe", "reporter"].includes(s.kind)).sort((a, b) => a.planned - b.planned);
+  const maxCol = Math.max(...reqStations.map((s) => col.get(s.id)));
+  const ncols = maxCol + 2;
+  flow.style.gridTemplateColumns = `repeat(${ncols}, minmax(9rem, 1fr))`;
+  const rowsUsed = new Map();
+  const place = (el, c) => { const r = (rowsUsed.get(c) || 0) + 1; rowsUsed.set(c, r); el.style.gridColumn = c + 1; el.style.gridRow = r; };
+  for (const s of reqStations) {
+    const b = mk("button", `card st-card${s.planned ? " planned" : ""}`);
+    b.dataset.id = s.id;
+    b.innerHTML = `<span class="badge"></span><span class="nm">${esc(s.name)}</span><span class="sub">${esc(s.kind)}${s.site ? " · " + esc(s.site) : ""}${s.planned ? " · planned" : ""}${s.kind === "router" && e.layout === "today" ? ' · <span class="chip locked">Sign in to reveal</span>' : ""}</span><ul></ul>`;
+    b.addEventListener("click", () => select({ type: "station", id: s.id }));
+    place(b, col.get(s.id));
+    flow.append(b); cards.set(s.id, b);
+  }
+  // Service cards after the last station on their via.
+  for (const c of e.components) {
+    const last = e.hops.find((h) => h.id === c.via[c.via.length - 1]);
+    const b = mk("button", "card svc");
+    b.dataset.id = "c:" + c.id;
+    b.innerHTML = `<span class="nm">${esc(c.name)}</span><span class="sub"></span>`;
+    b.addEventListener("click", () => select({ type: "component", id: c.id }));
+    place(b, Math.min(ncols - 1, (last ? col.get(last.to) : maxCol) + 1));
+    flow.append(b); cards.set("c:" + c.id, b);
+  }
+  const maxRow = Math.max(...rowsUsed.values());
+  const lab = mk("div", "lane-label"); lab.textContent = "Who measured this"; lab.style.gridRow = maxRow + 1; flow.append(lab);
+  ["pite", "status-1"].forEach((id, i) => {
+    const s = e.stations.find((x) => x.id === id);
+    const b = mk("button", "card st-card obs");
+    b.dataset.id = id;
+    b.innerHTML = `<span class="badge"></span><span class="nm">${esc(s.name)}</span><span class="sub">${esc(s.kind)} · ${esc(s.site)}</span><ul></ul>`;
+    b.addEventListener("click", () => select({ type: "station", id }));
+    b.style.gridColumn = i * 2 + 1; b.style.gridRow = maxRow + 2;
+    flow.append(b); cards.set(id, b);
+  });
+  for (const h of e.hops) {
+    const l = mk("div", `link k-${h.kind}`);
+    l.innerHTML = `<span class="ms"></span><span class="lb">${esc(h.label)}</span>`;
+    l.dots = [];
+    linksEl.append(l); links.set(h.id, l);
+  }
+  // Packet route also needs the extra service links (last station -> service card).
+  for (const c of e.components) {
+    const l = mk("div", "link k-lan svc-link"); l.dataset.c = c.id; l.innerHTML = ""; l.dots = [];
+    linksEl.append(l); links.set("svc:" + c.id, l);
+  }
+}
+function mk(t, c) { const el = document.createElement(t); el.className = c; if (t === "button") el.type = "button"; return el; }
+
+function geometry() {
+  const fr = flow.getBoundingClientRect();
+  const ctr = (el, side) => { const r = el.getBoundingClientRect(); return { x: (side > 0 ? r.right : side < 0 ? r.left : r.left + r.width / 2) - fr.left, y: r.top + r.height / 2 - fr.top }; };
+  const seg = (l, a, b) => {
+    const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+    const fwd = rb.left >= ra.right - 4, back = rb.right <= ra.left + 4;
+    const p = ctr(a, fwd ? 1 : back ? -1 : 0), q = ctr(b, fwd ? -1 : back ? 1 : 0);
+    const len = Math.hypot(q.x - p.x, q.y - p.y), ang = Math.atan2(q.y - p.y, q.x - p.x);
+    l.style.left = p.x + "px"; l.style.top = p.y + "px"; l.style.width = len + "px";
+    l.style.transform = `rotate(${ang}rad)`; l.len = len;
+    const ms = l.querySelector(".ms"), lb = l.querySelector(".lb");
+    for (const t of [ms, lb]) if (t) t.style.transform = `translateX(-50%) rotate(${-ang}rad)`;
+  };
+  for (const h of est.hops) { const a = cards.get(h.from), b = cards.get(h.to), l = links.get(h.id); if (a && b && l) seg(l, a, b); }
+  for (const c of est.components) {
+    const last = est.hops.find((h) => h.id === c.via[c.via.length - 1]);
+    const a = cards.get(last ? last.to : "traefik"), b = cards.get("c:" + c.id), l = links.get("svc:" + c.id);
+    if (a && b && l) seg(l, a, b);
+  }
+}
+
+function update(e) {
+  est = e;
+  renderPlain(e, plain);
+  if (mode === "plain") return;
+  if (builtFor !== e.layout || !cards.size) build(e);
+  for (const s of e.stations) {
+    const b = cards.get(s.id); if (!b) continue;
+    const cs = compsThrough(e, s.id), up = cs.filter((c) => c.state === "up").length;
+    const badge = b.querySelector(".badge");
+    badge.textContent = s.id === "pite" ? `reported ${fmtAge(e.home_age_s)}` : s.id === "status-1" ? `probing ${fmtAge(e.sample_age_s)}` : cs.length ? `${up}/${cs.length}` : "—";
+    badge.classList.toggle("bad", cs.length > 0 && up < cs.length);
+    const items = cs.slice(0, 4).map((c) => {
+      const al = e.stats[c.id]?.aliases;
+      const extra = al && al.length > 1 ? `<li><details><summary>+${al.length} aliases</summary>${al.map(esc).join("<br>")}</details></li>` : "";
+      return `<li><span>${esc(c.name)}</span><span class="st st-${sk(c.state)}" title="${stateWord(c.state)}"></span></li>${extra}`;
+    });
+    const ul = b.querySelector("ul");
+    if (!ul.contains(document.activeElement) && !ul.querySelector("details[open]")) ul.innerHTML = items.join("") + (cs.length > 4 ? `<li>+${cs.length - 4} more</li>` : "");
+    b.setAttribute("aria-label", `${s.name}: ${cs.length ? `${up} of ${cs.length} services up` : s.kind}`);
+  }
+  for (const c of e.components) {
+    const b = cards.get("c:" + c.id);
+    for (const k of ["up", "degraded", "down", "unknown"]) b.classList.toggle("s-" + k, sk(c.state) === k);
+    b.querySelector(".sub").innerHTML = `<span class="st st-${sk(c.state)}">${stateWord(c.state)}</span> · ${fmtMs(c.latency_ms)}`;
+  }
+  for (const h of e.hops) {
+    const l = links.get(h.id); if (!l) continue;
+    const th = h.latency_ms == null ? 2 : Math.max(2, Math.min(10, 2 + Math.log2(1 + h.latency_ms)));
+    l.style.height = th + "px"; l.style.marginTop = -th / 2 + "px";
+    l.classList.toggle("null", h.latency_ms == null);
+    l.classList.toggle("st-degraded-l", h.state === "degraded");
+    l.classList.toggle("st-down-l", h.state === "down");
+    l.querySelector(".ms").textContent = h.latency_ms == null ? (h.state === "unknown" ? "not measured" : stateWord(h.state)) : fmtMs(h.latency_ms);
+    // Dots: proportional to downstream requests_24h, cap 6, at least 1 when stats are missing.
+    const down = e.components.filter((c) => c.via.includes(h.id));
+    const req = down.reduce((s, c) => s + (e.stats?.[c.id]?.requests_24h || 0), 0);
+    const n = OBS.has(h.kind) ? 1 : req ? Math.max(1, Math.min(6, Math.ceil(req / 10000))) : 1;
+    while (l.dots.length < n) { const d = mk("i", "dot"); d.p = Math.random(); l.append(d); l.dots.push(d); }
+    while (l.dots.length > n) l.dots.pop().remove();
+    l.speed = h.latency_ms ? Math.max(0.03, Math.min(0.6, 8 / h.latency_ms)) : 0.08;
+    l.dots.forEach((d) => d.classList.toggle("red", h.state === "down" || h.state === "degraded"));
+  }
+  for (const c of e.components) { const l = links.get("svc:" + c.id); l.style.height = "2px"; l.dots.length || (l.dots = []); }
+  const up = e.components.filter((c) => c.state === "up").length;
+  $("#sum").textContent = `${up}/${e.components.length} services up · ${e.hops.length} links · layout: ${e.layout === "target" ? "Target" : "Today"}`;
+  $("#ages").textContent = `pite last report ${fmtAge(e.home_age_s)}${e.sample_age_s ? " · data " + fmtAge(e.sample_age_s) : ""}${e.load_error ? " · " + e.load_error : ""}`;
+  geometry();
+  if (sel) renderInsp();
+}
+
+function select(s) { sel = s; renderInsp(); highlight(); }
+function clear() { sel = null; insp.innerHTML = "<p>Select a station or service to inspect it. Esc clears.</p>"; highlight(); }
+function highlight() {
+  flow.classList.toggle("dim", !!sel && sel.type === "component");
+  cards.forEach((b) => b.classList.remove("on")); links.forEach((l) => l.classList.remove("on"));
+  if (!sel || sel.type !== "component") return;
+  const c = est.components.find((x) => x.id === sel.id);
+  cards.get("c:" + c.id)?.classList.add("on"); links.get("svc:" + c.id)?.classList.add("on");
+  for (const hid of c.via) { const h = est.hops.find((x) => x.id === hid); links.get(hid)?.classList.add("on"); cards.get(h.from)?.classList.add("on"); cards.get(h.to)?.classList.add("on"); }
+}
+function renderInsp() {
+  const e = est, x = $("#insp .x");
+  const hadFocus = x && document.activeElement === x;
+  let html;
+  if (sel.type === "station") {
+    const s = e.stations.find((v) => v.id === sel.id); if (!s) return clear();
+    const hops = e.hops.filter((h) => h.from === s.id || h.to === s.id);
+    html = `<h2>${esc(s.name)}</h2><p>${esc(s.kind)} · ${esc(s.site || "between sites")} · ${s.tier}${s.planned ? " · planned" : ""}</p>
+      <table><tbody>${compsThrough(e, s.id).map((c) => `<tr><td>${esc(c.name)}</td><td>${stateBadge(c.state)}</td><td>${fmtMs(c.latency_ms)}</td></tr>`).join("") || "<tr><td>No services routed here</td></tr>"}</tbody></table>
+      <p><strong>Hops</strong></p><table><tbody>${hops.map((h) => `<tr><td>${h.from === s.id ? "→ " + esc(h.to) : "← " + esc(h.from)}</td><td>${fmtMs(h.latency_ms)}</td><td>${stateBadge(h.state)}</td><td><a href="#row-hop-${esc(h.id)}">table</a></td></tr>`).join("")}</tbody></table>`;
+  } else {
+    const c = e.components.find((v) => v.id === sel.id);
+    html = `<h2>${esc(c.name)}</h2><p>${stateBadge(c.state)} · ${fmtMs(c.latency_ms)} · 30 d ${c.uptime["30d"]}%</p>
+      <p>Path: ${c.via.map((h) => esc(e.hops.find((x) => x.id === h)?.label || h)).join(" → ")}</p>
+      <a href="#row-component-${esc(c.id)}">Show in table</a>`;
+  }
+  insp.innerHTML = `<button type="button" class="x" aria-label="Close">Esc</button>` + html;
+  insp.querySelector(".x").addEventListener("click", clear);
+  if (hadFocus) insp.querySelector(".x").focus();
+}
+function stateBadge(s) { return `<span class="st st-${sk(s)}">${stateWord(s)}</span>`; }
+
+addEventListener("keydown", (ev) => { if (ev.key === "Escape" && sel) { const id = sel.type === "station" ? sel.id : "c:" + sel.id; clear(); cards.get(id)?.focus(); } });
+addEventListener("resize", () => est && geometry());
+
+// One rAF loop moves every dot along its link (transform only).
+let lastTs = 0;
+function frame(ts) {
+  const dt = Math.min(0.1, (ts - lastTs) / 1000 || 0); lastTs = ts;
+  if (!reduce.matches && !stage.hidden) for (const l of links.values()) {
+    if (!l.dots.length || !l.len) continue;
+    for (const d of l.dots) { d.p = (d.p + dt * l.speed) % 1; d.style.transform = `translateX(${(d.p * l.len).toFixed(1)}px)`; }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+start(update);
+</script>
+</body>
+</html>
