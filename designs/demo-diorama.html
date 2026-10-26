@@ -88,7 +88,24 @@ const sk = (s) => (["up", "degraded", "down"].includes(s) ? s : "unknown");
 const T = 34;                        // world px per tile
 const CELL = 4;                      // tiles per building plot
 // Island placement in tiles: [x0, y0, cols, rows]
-const ISLANDS = { house: [0, 0, 3, 2], nyc1: [14, 0, 2, 1], tor1: [14, 6, 1, 1], ash: [24, 0, 1, 1] };
+// Islands are derived from the data: home sites run down the left (Verizon LAN in front of the
+// house), cloud origins in the middle column, planned edge sites (CDN home proxies) on the right.
+let ISLANDS = {};
+function islands(e) {
+  const out = {}, col = { home: [0, 0], origin: [14, 0], edge: [24, 0] };
+  // Within a lane, sites with fewer machines go first (closer to the street): the Verizon LAN
+  // with home-pi stands in front of the house, the way traffic meets it.
+  const ordered = [...e.sites].sort((p, q) => e.nodes.filter((x) => x.site === p.id).length - e.nodes.filter((x) => x.site === q.id).length);
+  for (const s of ordered) {
+    const n = e.nodes.filter((x) => x.site === s.id).length;
+    const c = Math.max(1, Math.min(3, n)), r = Math.max(1, Math.ceil(n / 3));
+    const lane = s.kind === "home" ? "home" : s.role === "edge" ? "edge" : "origin";
+    const [x0, y0] = col[lane];
+    out[s.id] = [x0, y0, c, r];
+    col[lane] = [x0, y0 + r * CELL + 2];
+  }
+  return out;
+}
 let est = null, builtFor = "", sel = null, day = 89, ox = 0, oy = 0;
 const B = new Map(); const prevNode = new Map();
 
@@ -99,6 +116,7 @@ const grade = (p) => (p >= 90 ? "b" : p >= 75 ? "w" : "");
 
 function build(e) {
   builtFor = e.layout + e.nodes.map((n) => n.id).join();
+  ISLANDS = islands(e);
   const scene = $("#scene"), bl = $("#bldgs"), lab = $("#labels");
   scene.textContent = bl.textContent = lab.textContent = ""; B.clear();
   // Bounds of every island corner + tallest building, to size the world box.
