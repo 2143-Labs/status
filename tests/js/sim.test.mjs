@@ -4,7 +4,7 @@ import { simulate, SCENARIOS, LAYOUTS, BASE_T } from "../../designs/estate-sim.j
 
 const KEYS = ["v", "source", "scenario", "generated", "tz", "probe_interval_s", "home_age_s", "sample_age_s",
   "days_start", "hours_start", "latency_start", "groups", "layout", "providers", "sites", "nodes",
-  "workloads", "components", "hops", "stations", "stats", "outages"];
+  "workloads", "components", "hops", "stations", "routes", "stats", "outages"];
 const comp = (e, id) => e.components.find((c) => c.id === id);
 const node = (e, id) => e.nodes.find((n) => n.id === id);
 const hop = (e, id) => e.hops.find((h) => h.id === id);
@@ -69,11 +69,14 @@ test("deploy-storm moves grafana", () => {
 test("layouts", () => {
   const t = simulate({ layout: "today" });
   assert.ok(t.stations.some((s) => s.id === "do-lb"));
-  assert.ok(hop(t, "internet-router"));
+  assert.ok(hop(t, "internet-verizon") && hop(t, "verizon-router"));
   assert.equal(t.providers.find((p) => p.id === "hetzner").planned, true);
+  assert.equal(t.sites.find((s) => s.id === "do-edge").planned, true);
+  assert.equal(t.providers.find((p) => p.id === "do").planned, false);
   const g = simulate({ layout: "target" });
   assert.ok(!g.stations.some((s) => s.id === "do-lb"));
-  assert.ok(!hop(g, "internet-router"));
+  assert.ok(!hop(g, "internet-verizon"));
+  assert.ok(!g.sites.some((s) => s.planned));
   assert.ok(node(g, "edge-1") && node(g, "edge-2"));
   assert.equal(simulate({ layout: "bogus" }).layout, "today");
   for (const e of [t, g]) {
@@ -82,6 +85,12 @@ test("layouts", () => {
     for (const c of e.components) for (const h of c.via) assert.ok(hopIds.has(h), `${e.layout} ${c.id} via ${h}`);
     for (const h of e.hops) assert.ok(stIds.has(h.from) && stIds.has(h.to), `${e.layout} ${h.id}`);
     for (const w of e.workloads) assert.ok(e.nodes.some((n) => n.id === w.node), w.id);
+    for (const r of e.routes) {
+      for (const h of r.path) assert.ok(hopIds.has(h), `${e.layout} route ${r.id} hop ${h}`);
+      for (const c of r.calls) assert.ok(e.routes.some((x) => x.id === c), `${e.layout} route ${r.id} calls ${c}`);
+      assert.ok(stIds.has(r.from) && stIds.has(r.to), `${e.layout} route ${r.id} ends`);
+    }
+    for (const c of e.components) if (c.route) assert.ok(e.routes.some((r) => r.id === c.route), c.id);
   }
 });
 
@@ -106,4 +115,27 @@ test("no public IP in output", () => {
         assert.ok(o[0] === 10 || o[0] === 127 || (o[0] === 192 && o[1] === 168), m[0]);
       }
     }
+});
+
+test("home-pi sits on the Verizon LAN, outside the MikroTik", () => {
+  const e = simulate({});
+  const pi = node(e, "home-pi");
+  assert.equal(pi.site, "isp-lan");
+  assert.ok(pi.lan_ip.startsWith("192.168.0."));
+  assert.ok(hop(e, "verizon-homepi") && hop(e, "verizon-router"));
+  assert.equal(simulate({ scenario: "home-offline", elapsed: 30 }).nodes.find((n) => n.id === "home-pi").state, "unknown");
+});
+
+test("routes: not everything goes through DigitalOcean", () => {
+  const e = simulate({});
+  const r = (id) => e.routes.find((x) => x.id === id);
+  assert.ok(r("home-direct").hosts.includes("llm.2143.me"));
+  assert.ok(r("home-direct").hosts.includes("john2143.com"));
+  assert.ok(!r("home-direct").path.some((h) => h.startsWith("internet-lb")));
+  assert.deepEqual(r("images").calls, ["images-s3"]);
+  assert.equal(r("images-s3").to, "s3");
+  assert.equal(comp(e, "i-2143-me").route, "images");
+  const slow = simulate({ scenario: "tunnel-slow", elapsed: 20 });
+  assert.equal(slow.routes.find((x) => x.id === "images-s3").state, "degraded");
+  assert.equal(slow.routes.find((x) => x.id === "home-direct").state, "up");
 });

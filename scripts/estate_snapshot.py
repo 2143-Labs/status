@@ -5,11 +5,11 @@
 
 Reads the public status.json (components, history) and the home Mimir (LAN only:
 node specs/utilisation, pod placement and requests). Topology (providers, sites,
-stations, hops) is the `today` layout from designs/estate-sim.js; hop latency is
+stations, hops, routes) is the `today` layout from designs/estate-topology.json; hop latency is
 not measured yet, so hops are null/unknown. stdlib only.
 
 Exit 1: sanitiser found a public IP. Exit 2: a source was unreachable.
-Exit 3: output over 60,000 bytes even with 6 workloads per node.
+Exit 3: output over 80,000 bytes even with 3 workloads per node.
 """
 import json
 import re
@@ -17,6 +17,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 STATUS = "https://status-origin.2143.me/status.json"
 MIMIR = "http://192.168.6.23:8080/prometheus/api/v1/query"
@@ -36,42 +37,9 @@ CLOUD = [
     dict(id="status-1", name="status-1", site="tor1", role="droplet", arch="amd64", lan_ip=None,
          cpu_cores=1, ram_bytes=512 * MiB, disk_bytes=10 * GB, public_ip_locked=True),
 ]
-PROVIDERS = [dict(id="home", name="Home", planned=False), dict(id="do", name="DigitalOcean", planned=False),
-             dict(id="hetzner", name="Hetzner", planned=True)]
-SITES = [dict(id="house", name="House", provider="home", kind="home", planned=False),
-         dict(id="nyc1", name="nyc1", provider="do", kind="cloud", planned=False),
-         dict(id="tor1", name="tor1", provider="do", kind="cloud", planned=False),
-         dict(id="ash", name="Ashburn", provider="hetzner", kind="cloud", planned=True)]
-STATIONS = [
-    ("internet", "Internet", None, "ingress", "internet", False),
-    ("edge-s1", "edge slot s1", "ash", "ingress", "edge", True),
-    ("edge-s2", "edge slot s2", "nyc1", "ingress", "edge", True),
-    ("do-lb", "DO load balancer", "nyc1", "ingress", "lb", False),
-    ("router", "MikroTik RB5009 · 15 port forwards", "house", "ingress", "router", False),
-    ("doks", "DOKS · nginx-gateway-fabric", "nyc1", "compute", "gateway", False),
-    ("traefik", "Traefik VIP 192.168.6.6", "house", "compute", "vip", False),
-    ("wg", "WireGuard 10.99.0.2 ⇄ router", None, "compute", "tunnel", False),
-    ("status-1", "status-1 · statusd", "tor1", "service", "probe", False),
-    ("pite", "pite · home monitor", "house", "service", "reporter", False),
-]
-HOPS = [
-    ("internet-lb", "internet", "do-lb", "public", "public HTTPS"),
-    ("lb-doks", "do-lb", "doks", "public", "LB → cluster"),
-    ("internet-router", "internet", "router", "public", "home WAN · 15 forwards"),
-    ("router-traefik", "router", "traefik", "lan", "LAN"),
-    ("doks-wg", "doks", "wg", "tunnel", "WireGuard"),
-    ("wg-router", "wg", "router", "tunnel", "WireGuard"),
-    ("probe-public", "status-1", "internet", "probe", "probes"),
-    ("pite-report", "pite", "status-1", "report", "reports"),
-]
-VIA = {
-    "john2143-com": ["internet-router", "router-traefik"],
-    "files-john2143-com": ["internet-router", "router-traefik"],
-    "2143-me": ["internet-lb", "lb-doks"],
-    "2143-me-user": ["internet-lb", "lb-doks"],
-    "i-2143-me": ["internet-lb", "lb-doks"],
-    "temporal": ["doks-wg", "wg-router", "router-traefik"],
-}
+TOPO = json.loads((Path(__file__).resolve().parent.parent / "designs" / "estate-topology.json").read_text(encoding="utf-8"))
+COMPONENT_ROUTE = {"john2143-com": "home-direct", "files-john2143-com": "home-direct", "2143-me": "do-only",
+                   "2143-me-user": "do-only", "i-2143-me": "images", "temporal": "temporal-grpc"}
 QUAD = re.compile(r"(?<![\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.-])")
 
 
@@ -144,6 +112,11 @@ def build(per_node):
             load1=round(load.get(h, 0), 2), temp_c=None,
             state=("degraded" if max(pct) >= 90 else "up") if seen else "unknown",
             age_s=0 if seen else None, public_ip_locked=False))
+    for t in TOPO["nodes"]:
+        if t[0] == "home-pi":  # standalone on the Verizon LAN; not scraped, so unmeasured
+            nodes.insert(0, dict(id=t[0], name=t[0], site=t[1], role=t[2], arch=t[3], lan_ip=t[4], cpu_cores=t[5],
+                                 ram_bytes=t[6], disk_bytes=t[7], cpu_pct=0, ram_pct=0, disk_pct=0, net_rx_bps=0,
+                                 net_tx_bps=0, load1=0, temp_c=None, state="unknown", age_s=None, public_ip_locked=t[8]))
     for c in CLOUD:
         nodes.append(dict(c, cpu_pct=0, ram_pct=0, disk_pct=0, net_rx_bps=0, net_tx_bps=0,
                           load1=0, temp_c=None, state="unknown", age_s=None))
@@ -182,7 +155,8 @@ def build(per_node):
 
     components = []
     for c in status["components"]:
-        components.append(dict(c, via=VIA.get(c["id"], ["router-traefik"])))
+        via = TOPO["via"]["today"]
+        components.append(dict(c, via=via.get(c["id"], via["*"]), route=COMPONENT_ROUTE.get(c["id"])))
 
     keep = ["generated", "tz", "probe_interval_s", "home_age_s", "sample_age_s", "days_start",
             "hours_start", "latency_start", "groups", "outages"]
@@ -190,18 +164,23 @@ def build(per_node):
     e.update({k: status[k] for k in keep})
     e["generated"] = now
     e.update(
-        layout="today", providers=PROVIDERS, sites=SITES, nodes=nodes, workloads=workloads,
-        components=components,
+        layout="today",
+        providers=[dict(id=i, name=n, planned=all(x[4] == "edge" for x in TOPO["sites"] if x[2] == i))
+                   for i, n in TOPO["providers"]],
+        sites=[dict(id=i, name=n, provider=p, kind=k, role=r, planned=r == "edge") for i, n, p, k, r in TOPO["sites"]],
+        nodes=nodes, workloads=workloads, components=components,
         hops=[dict(id=i, **{"from": f}, to=t, label=lbl, latency_ms=None, state="unknown", kind=k, planned=False)
-              for i, f, t, k, lbl in HOPS],
-        stations=[dict(id=i, name=n, site=s, tier=ti, kind=k, planned=p) for i, n, s, ti, k, p in STATIONS],
+              for i, f, t, k, lbl in TOPO["hops"]["today"]],
+        stations=[dict(id=i, name=n, site=s, tier=ti, kind=k, planned=p) for i, n, s, ti, k, p in TOPO["stations"]["today"]],
+        routes=[dict(r, calls=r.get("calls", []), hosts=TOPO["hosts"].get(r["id"], []), latency_ms=None, state="unknown")
+                for r in TOPO["routes"]["today"]],
         stats={},
     )
     return e
 
 
 def main():
-    for per_node in (12, 6):
+    for per_node in (12, 6, 3):
         try:
             e = build(per_node)
         except Exception as exc:  # unreachable source, bad response
@@ -212,10 +191,10 @@ def main():
         if bad:
             print(f"estate_snapshot: refusing to write, public IP-like values: {sorted(set(bad))}", file=sys.stderr)
             return 1
-        if len(text.encode()) <= 60000:
+        if len(text.encode()) <= 80000:
             sys.stdout.write(text + "\n")
             return 0
-    print(f"estate_snapshot: output {len(text.encode())} bytes > 60000", file=sys.stderr)
+    print(f"estate_snapshot: output {len(text.encode())} bytes > 80000", file=sys.stderr)
     return 3
 
 
