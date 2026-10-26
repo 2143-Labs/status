@@ -1,4 +1,4 @@
-# Every designs/*.html becomes a key in this ConfigMap, flattened to the file
+# Every designs/*.html, *.json, *.js and *.css becomes a key in this ConfigMap, flattened to the file
 # name so the pages are served at /map.html, /doc.html, ... whatever the design
 # is called. No image build: Argo renders the chart from the PR's own commit.
 apiVersion: v1
@@ -9,7 +9,7 @@ metadata:
   labels:
     app: status-design
 data:
-{{- range $path, $_ := .Files.Glob "designs/*.html" }}
+{{- range $path, $_ := .Files.Glob "designs/*.{html,json,js,css}" }}
   {{ base $path }}: |
 {{ $.Files.Get $path | indent 4 }}
 {{- end }}
