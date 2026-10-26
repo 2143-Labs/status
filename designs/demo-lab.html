@@ -50,6 +50,7 @@
 .lb b{font-weight:600}
 .lb.bl{font-size:.85rem;font-weight:700;border-color:var(--fg);transform:translate(-50%,-100%) scale(var(--inv,1))}
 .lb.rm{font-size:.72rem;color:var(--muted)}
+.lb.rm b{color:var(--fg)}
 .lb.s-down{border-color:var(--bad)}.lb.s-degraded{border-color:var(--warn)}
 .lb.sign{font-weight:600}
 .insp{position:sticky;top:3.2rem;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:.7rem .8rem;font-size:.85rem;max-height:calc(100vh - 4rem);overflow:auto}
@@ -92,7 +93,7 @@ const sk = (s) => (["up", "degraded", "down"].includes(s) ? s : "unknown");
 const grade = (p) => (p >= 90 ? "b" : p >= 75 ? "w" : "");
 
 const U = 24;                          // px per tile in floor-plan space
-const PROV_ORDER = ["home", "do", "hetzner"], SITE_ORDER = ["house", "nyc1", "tor1", "ash"];
+const SITE_ORDER = ["isp-lan", "house", "nyc1", "tor1", "ash", "do-edge"];
 const ROW_H = 3, PAD = 1, GAP = 3;     // tiles
 let est = null, built = "", sel = null, zoom = null, OX = 0, OY = 0;
 const pos = new Map();                 // entity key -> {x,y} tile centre in floor-plan space
@@ -113,72 +114,88 @@ function serviceSite(e, c) {
   return st?.site || "house";
 }
 
+// Buildings = provider × role. CDN home-proxy (edge) buildings stand in front of the origins,
+// between the street and the house; they are dashed while planned.
+const BUILDING_ROWS = [["hetzner:edge", "do:edge"], ["home:origin", "do:origin"]];
+const bkOf = (site) => site.provider + ":" + (site.role || "origin");
+const siteBk = (sid) => { const s = est?.sites.find((x) => x.id === sid); return s ? bkOf(s) : null; };
+
 function build(e) {
-  built = e.layout + e.nodes.length;
+  built = e.layout + e.nodes.length + e.sites.length;
   fp.textContent = ov.textContent = "";
   pos.clear(); els.clear(); lbs.clear(); cables.clear(); bbox.clear();
   const ingress = (sid) => e.stations.filter((s) => s.site === sid && s.tier === "ingress");
   const compute = (sid) => [...e.nodes.filter((n) => n.site === sid).map((n) => ({ n })), ...e.stations.filter((s) => s.site === sid && s.tier === "compute").map((s) => ({ s }))];
   const service = (sid) => [...e.components.filter((c) => serviceSite(e, c) === sid).map((c) => ({ c })), ...e.stations.filter((s) => s.site === sid && s.tier === "service").map((s) => ({ s }))];
-  // Room width from its busiest row; each tile is 2 wide in ingress/compute, services wrap 2 per tile column.
   const roomW = (sid) => Math.max(6, ingress(sid).length * 3, compute(sid).length * 3, service(sid).length * 3) + 1;
   const roomH = ROW_H * 3 + 2;
-  let bx = 0;
-  const STREET_Y = -4;
-  for (const pid of PROV_ORDER) {
-    const prov = e.providers.find((p) => p.id === pid); if (!prov) continue;
-    const sites = SITE_ORDER.map((id) => e.sites.find((s) => s.id === id)).filter((s) => s && s.provider === pid);
-    const bw = Math.max(...sites.map((s) => roomW(s.id))) + PAD * 2;
-    const bh = sites.length * (roomH + PAD) + PAD;
-    bbox.set(pid, { x: bx, y: 0, w: bw, h: bh });
-    const b = div("bld" + (prov.planned ? " planned" : ""), fp, { left: px(bx), top: px(0), width: px(bw), height: px(bh) });
-    div("front", b); div("frontr", b);
-    let ry = PAD;
-    for (const s of sites) {
-      const rw = bw - PAD * 2, rx = bx + PAD;
-      div("room" + (s.planned ? " planned" : ""), fp, { left: px(rx), top: px(ry), width: px(rw), height: px(roomH) });
-      [1, 2].forEach((k) => div("row", fp, { left: px(rx), width: px(rw), top: px(ry + k * (ROW_H + 0.66)) }));
-      pos.set("room:" + s.id, { x: rx + 0.6, y: ry + roomH / 2 });
-      const place = (key, i, rowIdx, w = 2, h = 2) => { const x = rx + 1 + i * 3, y = ry + 0.4 + rowIdx * (ROW_H + 0.66); pos.set(key, { x: x + w / 2, y: y + h / 2 }); return { left: px(x), top: px(y), width: px(w), height: px(h) }; };
-      ingress(s.id).forEach((st, i) => els.set("st:" + st.id, div("tile st" + (st.planned ? " planned" : ""), fp, place("st:" + st.id, i, 0))));
-      compute(s.id).forEach((o, i) => {
-        if (o.n) { const r = div("rack", fp, place("n:" + o.n.id, i, 1)); r.innerHTML = "<i></i><i></i><i></i>"; els.set("n:" + o.n.id, r); }
-        else els.set("st:" + o.s.id, div("tile st", fp, place("st:" + o.s.id, i, 1)));
-      });
-      service(s.id).forEach((o, i) => {
-        const key = o.c ? "c:" + o.c.id : "st:" + o.s.id;
-        els.set(key, div("tile " + (o.c ? "svc" : "st"), fp, place(key, i, 2, 2, 1.4)));
-      });
-      ry += roomH + PAD;
+  const LEFT = 5, STREET_Y = -4;
+  let y0 = 0, maxX = 0;
+  for (const row of BUILDING_ROWS) {
+    let bx = LEFT, rowH = 0;
+    for (const bk of row) {
+      const [pid, role] = bk.split(":");
+      const prov = e.providers.find((p) => p.id === pid);
+      const sites = SITE_ORDER.map((id) => e.sites.find((s) => s.id === id)).filter((s) => s && bkOf(s) === bk);
+      if (!prov || !sites.length) continue;
+      const planned = sites.every((s) => s.planned);
+      const bw = Math.max(...sites.map((s) => roomW(s.id))) + PAD * 2;
+      const bh = sites.length * (roomH + PAD) + PAD;
+      bbox.set(bk, { x: bx, y: y0, w: bw, h: bh, name: prov.name + (role === "edge" ? " · CDN home proxy" : ""), planned });
+      const b = div("bld" + (planned ? " planned" : ""), fp, { left: px(bx), top: px(y0), width: px(bw), height: px(bh) });
+      div("front", b); div("frontr", b);
+      let ry = y0 + PAD;
+      for (const s of sites) {
+        const rw = bw - PAD * 2, rx = bx + PAD;
+        div("room" + (s.planned ? " planned" : ""), fp, { left: px(rx), top: px(ry), width: px(rw), height: px(roomH) });
+        [1, 2].forEach((k) => div("row", fp, { left: px(rx), width: px(rw), top: px(ry + k * (ROW_H + 0.66)) }));
+        pos.set("room:" + s.id, { x: rx + 0.6, y: ry + roomH / 2 });
+        const place = (key, i, rowIdx, w = 2, h = 2) => { const x = rx + 1 + i * 3, y = ry + 0.4 + rowIdx * (ROW_H + 0.66); pos.set(key, { x: x + w / 2, y: y + h / 2 }); return { left: px(x), top: px(y), width: px(w), height: px(h) }; };
+        ingress(s.id).forEach((st, i) => els.set("st:" + st.id, div("tile st" + (st.planned ? " planned" : ""), fp, place("st:" + st.id, i, 0))));
+        compute(s.id).forEach((o, i) => {
+          if (o.n) { const r = div("rack", fp, place("n:" + o.n.id, i, 1)); r.innerHTML = "<i></i><i></i><i></i>"; els.set("n:" + o.n.id, r); }
+          else els.set("st:" + o.s.id, div("tile st", fp, place("st:" + o.s.id, i, 1)));
+        });
+        service(s.id).forEach((o, i) => {
+          const key = o.c ? "c:" + o.c.id : "st:" + o.s.id;
+          els.set(key, div("tile " + (o.c ? "svc" : "st"), fp, place(key, i, 2, 2, 1.4)));
+        });
+        ry += roomH + PAD;
+      }
+      bx += bw + GAP; rowH = Math.max(rowH, bh);
     }
-    bx += bw + GAP;
+    maxX = Math.max(maxX, bx - GAP);
+    y0 += rowH + GAP;
   }
-  // Stations outside buildings: internet is a street along the top; wg is a pipe between home and DO.
-  div("street", fp, { left: px(0), top: px(STREET_Y), width: px(bx - GAP), height: px(2) });
-  pos.set("st:internet", { x: (bx - GAP) / 2, y: STREET_Y + 1 });
-  const hb = bbox.get("home"), db = bbox.get("do");
-  const wgX = hb.x + hb.w + GAP / 2, wgY = Math.min(hb.h, db.h) / 2;
-  els.set("st:wg", div("tile st", fp, { left: px(wgX - 0.9), top: px(wgY - 0.9), width: px(1.8), height: px(1.8) }));
-  pos.set("st:wg", { x: wgX, y: wgY });
-  // Size the camera box from projected corners.
-  const corners = [[0, STREET_Y], [bx, STREET_Y], [0, Math.max(...[...bbox.values()].map((b) => b.h)) + 1], [bx, Math.max(...[...bbox.values()].map((b) => b.h)) + 1]].map(([x, y]) => ({ x: 0.866 * (x - y) * U, y: 0.5 * (x + y) * U }));
+  const maxY = y0 - GAP;
+  // Outside the buildings: the internet street, the tailnet (left of home), the DO⇄home pipe.
+  div("street", fp, { left: px(LEFT), top: px(STREET_Y), width: px(maxX - LEFT), height: px(2) });
+  pos.set("st:internet", { x: (LEFT + maxX) / 2, y: STREET_Y + 1 });
+  const hb = bbox.get("home:origin"), db = bbox.get("do:origin");
+  if (hb && db) {
+    const wgX = hb.x + hb.w + GAP / 2, wgY = hb.y + Math.min(hb.h, db.h) / 2;
+    els.set("st:wg", div("tile st", fp, { left: px(wgX - 0.9), top: px(wgY - 0.9), width: px(1.8), height: px(1.8) }));
+    pos.set("st:wg", { x: wgX, y: wgY });
+  }
+  if (hb && e.stations.some((s) => s.id === "tailnet")) {
+    els.set("st:tailnet", div("tile st", fp, { left: px(LEFT - 3.5), top: px(hb.y + hb.h * 0.75 - 0.9), width: px(1.8), height: px(1.8) }));
+    pos.set("st:tailnet", { x: LEFT - 2.6, y: hb.y + hb.h * 0.75 });
+  }
+  const corners = [[0, STREET_Y], [maxX + 2, STREET_Y], [0, maxY + 1], [maxX + 2, maxY + 1]].map(([x, y]) => ({ x: 0.866 * (x - y) * U, y: 0.5 * (x + y) * U }));
   const minX = Math.min(...corners.map((c) => c.x)), minY = Math.min(...corners.map((c) => c.y));
   OX = -minX + 60; OY = -minY + 40;
   cam.style.width = Math.max(...corners.map((c) => c.x)) - minX + 140 + "px";
   cam.style.height = Math.max(...corners.map((c) => c.y)) - minY + 90 + "px";
   fp.style.left = OX + "px"; fp.style.top = OY + "px";
   fit();
-  // Cables: L-shaped (horizontal then vertical) between endpoint tile centres.
   for (const h of e.hops) {
     const a = pos.get("st:" + h.from), b = pos.get("st:" + h.to);
     if (!a || !b) continue;
     const segs = [], pts = [a, { x: b.x, y: a.y }, b];
-    const hz = div("cable k-" + h.kind, fp, { left: px(Math.min(a.x, b.x)), top: px(a.y - 0.08), width: px(Math.abs(b.x - a.x)), height: px(0.16) });
-    const vt = div("cable v k-" + h.kind, fp, { left: px(b.x - 0.08), top: px(Math.min(a.y, b.y)), width: px(0.16), height: px(Math.abs(b.y - a.y)) });
-    segs.push(hz, vt);
+    segs.push(div("cable k-" + h.kind, fp, { left: px(Math.min(a.x, b.x)), top: px(a.y - 0.08), width: px(Math.abs(b.x - a.x)), height: px(0.16) }));
+    segs.push(div("cable v k-" + h.kind, fp, { left: px(b.x - 0.08), top: px(Math.min(a.y, b.y)), width: px(0.16), height: px(Math.abs(b.y - a.y)) }));
     cables.set(h.id, { segs, pts, len: Math.abs(b.x - a.x) + Math.abs(b.y - a.y), pkts: [] });
   }
-  // Service tiles are fed from the last station on their path.
   for (const c of e.components) {
     const h = e.hops.find((x) => x.id === c.via[c.via.length - 1]);
     const a = h && pos.get("st:" + h.to), b = pos.get("c:" + c.id);
@@ -187,31 +204,42 @@ function build(e) {
       div("cable v k-lan", fp, { left: px(b.x - 0.04), top: px(Math.min(a.y, b.y)), width: px(0.08), height: px(Math.abs(b.y - a.y)) })];
     cables.set("svc:" + c.id, { segs, pts: [a, { x: b.x, y: a.y }, b], len: 0, pkts: [] });
   }
-  // Overlay labels in reading order: building → room → ingress → compute → service.
-  const label = (key, cls, html, on) => {
+  // Labels carry a level: building (b) and room (rm) always show; detail (d) shows when its
+  // building is zoomed, or anywhere when that thing is not up. Outside stations (o) always show.
+  const label = (key, cls, html, on, lvl, bk) => {
     const p = pos.get(key); if (!p) return;
     const q = project(p.x, p.y);
     const l = document.createElement("button"); l.type = "button"; l.className = "lb " + cls;
     l.style.left = q.x + "px"; l.style.top = q.y + "px"; l.innerHTML = html; l.bx = q.x; l.by = q.y;
+    l.dataset.lvl = lvl; l.dataset.bk = bk || "";
     l.addEventListener("click", on); ov.append(l); lbs.set(key, l);
   };
-  for (const pid of PROV_ORDER) {
-    const bb = bbox.get(pid); if (!bb) continue;
-    const prov = e.providers.find((p) => p.id === pid);
-    pos.set("b:" + pid, { x: bb.x + bb.w / 2, y: bb.y - 0.2 });
-    label("b:" + pid, "bl", `${esc(prov.name)}${prov.planned ? " · planned" : ""}`, () => zoomTo(zoom === pid ? null : pid));
+  for (const row of BUILDING_ROWS) for (const bk of row) {
+    const bb = bbox.get(bk); if (!bb) continue;
+    pos.set("b:" + bk, { x: bb.x + bb.w / 2, y: bb.y - 0.2 });
+    label("b:" + bk, "bl", `${esc(bb.name)}${bb.planned ? " · planned" : ""}`, () => zoomTo(zoom === bk ? null : bk), "b", bk);
     for (const sid of SITE_ORDER) {
-      const s = e.sites.find((x) => x.id === sid); if (!s || s.provider !== pid) continue;
-      label("room:" + sid, "rm", `${esc(s.name)}${s.planned ? " · Planned" : ""}`, () => zoomTo(pid));
-      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "ingress")) label("st:" + st.id, "sign", "", () => select("st", st.id));
-      for (const n of e.nodes.filter((x) => x.site === sid)) label("n:" + n.id, "", "", () => select("n", n.id));
-      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "compute")) label("st:" + st.id, "", "", () => select("st", st.id));
-      for (const c of e.components.filter((x) => serviceSite(e, x) === sid)) label("c:" + c.id, "", "", () => select("c", c.id));
-      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "service")) label("st:" + st.id, "", "", () => select("st", st.id));
+      const s = e.sites.find((x) => x.id === sid); if (!s || bkOf(s) !== bk) continue;
+      label("room:" + sid, "rm", "", () => zoomTo(bk), "rm", bk);
+      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "ingress")) label("st:" + st.id, "sign", "", () => select("st", st.id), "d", bk);
+      for (const n of e.nodes.filter((x) => x.site === sid)) label("n:" + n.id, "", "", () => select("n", n.id), "d", bk);
+      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "compute")) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
+      for (const c of e.components.filter((x) => serviceSite(e, x) === sid)) label("c:" + c.id, "", "", () => select("c", c.id), "d", bk);
+      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "service")) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
     }
   }
-  label("st:internet", "sign", "", () => select("st", "internet"));
-  label("st:wg", "", "", () => select("st", "wg"));
+  for (const id of ["internet", "tailnet", "wg"]) label("st:" + id, id === "internet" ? "sign" : "", "", () => select("st", id), "o", "");
+}
+
+// Level of detail: which labels are visible (and tabbable) right now.
+function lod() {
+  for (const l of lbs.values()) {
+    const lvl = l.dataset.lvl;
+    let show = lvl === "b" || lvl === "rm" || lvl === "o";
+    if (lvl === "d") show = zoom ? l.dataset.bk === zoom : l.classList.contains("alarm");
+    if (lvl === "rm" && zoom && l.dataset.bk !== zoom) show = false;
+    l.hidden = show === false;
+  }
 }
 
 function fit() {
@@ -231,12 +259,12 @@ function applyCam() {
   cam.style.setProperty("--inv", 1 / s);
 }
 function zoomTo(pid) {
-  zoom = pid; applyCam(); crumb();
+  zoom = pid; applyCam(); crumb(); lod(); declutter();
   if (pid) lbs.get("b:" + pid)?.focus({ preventScroll: true });
 }
 function crumb() {
   const parts = [`<button type="button" data-z="">Lab</button>`];
-  if (zoom) parts.push(esc(est.providers.find((p) => p.id === zoom)?.name || zoom));
+  if (zoom) parts.push(esc(bbox.get(zoom)?.name || zoom));
   if (sel) {
     const site = sel.t === "n" ? est.nodes.find((n) => n.id === sel.id)?.site : sel.t === "st" ? est.stations.find((s) => s.id === sel.id)?.site : sel.t === "c" ? serviceSite(est, est.components.find((c) => c.id === sel.id)) : null;
     if (site) parts.push(esc(est.sites.find((s) => s.id === site)?.name || site));
@@ -249,7 +277,7 @@ function update(e) {
   est = e;
   renderPlain(e, plain);
   if (mode === "plain") return;
-  if (built !== e.layout + e.nodes.length) build(e);
+  if (built !== e.layout + e.nodes.length + e.sites.length) build(e);
   for (const w of e.workloads) {
     const p = prevNode.get(w.id);
     if (p && p !== w.node) movedFrom.set(w.id, { from: p, until: e.generated + 10 });
@@ -264,7 +292,7 @@ function update(e) {
     // Extruded height ∝ log RAM, drawn as a solid offset shadow.
     const hgt = Math.round(Math.max(6, Math.min(28, 4 * Math.log2(n.ram_bytes / 2 ** 28))));
     r.style.boxShadow = `${hgt * 0.7}px ${hgt * 0.7}px 0 color-mix(in srgb, var(--fg) 35%, var(--bg))`;
-    l.className = `lb s-${sk(n.state)}`;
+    l.className = `lb s-${sk(n.state)}${n.state !== "up" ? " alarm" : ""}`;
     l.innerHTML = `<b>${esc(n.name)}</b> ${n.state === "unknown" ? "Not reporting" : `${fmtPct(n.cpu_pct)} · ${fmtPct(n.ram_pct)}`}`;
     l.setAttribute("aria-label", `rack ${n.name}: ${stateWord(n.state)}, cpu ${fmtPct(n.cpu_pct)}, ram ${fmtPct(n.ram_pct)}, disk ${fmtPct(n.disk_pct)}`);
   }
@@ -273,12 +301,12 @@ function update(e) {
     const hs = e.hops.filter((h) => h.from === s.id || h.to === s.id);
     const worst = hs.some((h) => h.state === "down") ? "down" : hs.some((h) => h.state === "degraded") ? "degraded" : "up";
     const lat = Math.max(...hs.map((h) => h.latency_ms ?? 0));
-    l.className = `lb ${s.tier === "ingress" ? "sign " : ""}s-${s.planned ? "unknown" : worst}`;
-    l.innerHTML = `<b>${esc(s.name)}</b>${s.planned ? " · Planned" : hs.length ? ` ${lat ? fmtMs(lat) : "—"}` : ""}${s.id === "router" && e.layout === "today" ? ' <span class="chip locked">Sign in to reveal</span>' : ""}${s.id === "pite" ? ` · ${fmtAge(e.home_age_s)}` : ""}`;
+    l.className = `lb ${s.tier === "ingress" ? "sign " : ""}s-${s.planned ? "unknown" : worst}${!s.planned && worst !== "up" ? " alarm" : ""}`;
+    l.innerHTML = `<b>${esc(s.name)}</b>${s.planned ? " · Planned" : hs.length ? ` ${lat ? fmtMs(lat) : "—"}` : ""}${s.id === "verizon" && e.layout === "today" ? ' <span class="chip locked">Sign in to reveal</span>' : ""}${s.id === "pite" ? ` · ${fmtAge(e.home_age_s)}` : ""}`;
   }
   for (const c of e.components) {
     const l = lbs.get("c:" + c.id), t = els.get("c:" + c.id); if (!l) continue;
-    l.className = `lb s-${sk(c.state)}`;
+    l.className = `lb s-${sk(c.state)}${c.state !== "up" ? " alarm" : ""}`;
     l.innerHTML = `${esc(c.name)} <span class="st st-${sk(c.state)}">${stateWord(c.state)}</span>`;
     t.style.background = c.state === "up" ? "" : `var(--${c.state === "down" ? "bad" : c.state === "degraded" ? "warn" : "line"})`;
   }
@@ -293,9 +321,18 @@ function update(e) {
   const up = e.components.filter((c) => c.state === "up").length;
   $("#sum").textContent = `${up}/${e.components.length} services up · ${e.nodes.length} racks · ${e.hops.length} links · layout: ${e.layout === "target" ? "Target" : "Today"}`;
   $("#ages").textContent = `pite last report ${fmtAge(e.home_age_s)}${e.sample_age_s ? " · data " + fmtAge(e.sample_age_s) : ""}${e.load_error ? " · " + e.load_error : ""}`;
+  for (const st of e.sites) {
+    const l = lbs.get("room:" + st.id); if (!l) continue;
+    const ns = e.nodes.filter((n) => n.site === st.id);
+    const cs = e.components.filter((c) => serviceSite(e, c) === st.id);
+    const bad = [...ns, ...cs].filter((x) => x.state !== "up").length;
+    l.className = "lb rm" + (bad ? " s-degraded" : "");
+    l.innerHTML = `<b>${esc(st.name)}</b>${st.planned ? " · Planned" : ` · ${ns.length} rack${ns.length === 1 ? "" : "s"}${cs.length ? ` · ${cs.length} svc` : ""}${bad ? ` · <span class="st st-degraded">${bad} need attention</span>` : ""}`}`;
+  }
   highlight();
   if (sel) inspect();
   crumb();
+  lod();
   declutter();
 }
 
@@ -304,7 +341,7 @@ function update(e) {
 function declutter() {
   // Labels are counter-scaled by --inv, so in overlay coordinates each is offsetSize × --inv.
   const inv = parseFloat(cam.style.getPropertyValue("--inv")) || 1;
-  const all = [...lbs.values()].filter((l) => l.bx != null);
+  const all = [...lbs.values()].filter((l) => l.bx != null && !l.hidden);
   const box = all.map((l) => ({ l, w: l.offsetWidth * inv + 4, h: l.offsetHeight * inv + 2, x: l.bx, y: l.by, bl: l.classList.contains("bl") }));
   box.sort((a, b) => a.y - b.y || a.x - b.x);
   const placed = [];
