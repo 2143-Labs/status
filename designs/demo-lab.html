@@ -69,7 +69,10 @@
 .lb.vip{font-weight:600;border-color:var(--accent);color:var(--fg)}
 .lb.kube-l{color:var(--accent);border-color:var(--accent)}
 .net{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.95em;color:var(--fg)}
-.tile.st.ts{border:2px solid var(--ok);border-radius:50%;background:color-mix(in srgb,var(--ok) 20%,var(--bg))}
+.tile.st.ts{border:2px solid var(--info);border-radius:50%;background:color-mix(in srgb,var(--info) 18%,var(--bg))}
+.room.ts-room{border-color:var(--info);border-style:dashed}
+.tile.xn{border-radius:50%;border:2px solid var(--ok);background:color-mix(in srgb,var(--ok) 14%,var(--bg))}
+.tile.xn.s-down,.tile.xn.s-unknown{border-color:var(--bad);background:var(--panel)}
 /* Provider identity colours. Chosen in OKLCH: one lightness per mode (ink L .45 light / .80 dark, tint L .95 / .28)
    so Home and DigitalOcean carry equal visual weight and differ only in hue; hues sit away from the status hues
    (ok/warn/bad/accent) so a building never reads as a state. ?scheme=map|slate|mono */
@@ -161,6 +164,16 @@ const prevNode = new Map(), movedFrom = new Map();
 
 // Zoomed out: isometric. Zoomed into a building: flat top-down (?flat=0 keeps iso when zoomed, for comparison).
 const FLAT_ZOOM = new URLSearchParams(location.search).get("flat") !== "0";
+// Tailscale exit nodes, from `tailscale exit-node list` on 2026-10-28. Offline nodes are not usable, so not listed.
+// The estate feed has no tailnet data yet; status here is fixed until pite reports `tailscale status --json`.
+const EXIT_NODES = [
+  { id: "nas", name: "nas", where: "Home", state: "up" },
+  { id: "doks-us-nyc", name: "doks-us-nyc", where: "DigitalOcean nyc1", state: "up" },
+  { id: "mullvad-us", name: "Mullvad US", where: "mullvad-us-vpin-deccam", state: "up" },
+  { id: "mullvad-de", name: "Mullvad DE", where: "Düsseldorf", state: "up" },
+  { id: "mullvad-ee", name: "Mullvad EE", where: "Tallinn", state: "up" },
+  { id: "mullvad-jp", name: "Mullvad JP", where: "Tokyo", state: "up" },
+];
 let flat = false;
 const project = (x, y) => (flat ? { x: OX + x * U, y: OY + y * U } : { x: OX + 0.866 * (x - y) * U, y: OY + 0.5 * (x + y) * U });
 const div = (cls, parent, st) => { const d = document.createElement("div"); d.className = cls; Object.assign(d.style, st || {}); parent.append(d); return d; };
@@ -206,9 +219,10 @@ function build(e) {
       // Planned buildings are drawn compact: narrower rooms and no service row.
       const planned = sites.every((s) => s.planned);
       const roomH = planned ? ROW_H * 2 + 2 : ROW_H * 3 + 2;
-      const bw = Math.max(...sites.map((s) => roomW(s.id, planned ? 4 : 6))) + PAD * 2;
+      const tsHere = bk === "home:origin" && e.stations.some((x) => x.id === "tailnet");
+      const bw = Math.max(...sites.map((s) => roomW(s.id, planned ? 4 : 6)), tsHere ? (EXIT_NODES.length + 1) * 3 + 1 : 0) + PAD * 2;
       const roomHOf = (s) => (compact(s) ? RH + 0.6 : roomH + (vip(s.id).length ? RH : 0));
-      const bh = sites.reduce((a, s) => a + roomHOf(s) + PAD, PAD);
+      const bh = sites.reduce((a, s) => a + roomHOf(s) + PAD, PAD) + (tsHere ? RH + 0.6 + PAD : 0);
       const short = prov.name + (role === "edge" && e.sites.some((s) => s.provider === pid && s.role !== "edge") ? " edge" : "");
       bbox.set(bk, { x: bx, y: y0, w: bw, h: bh, name: prov.name + (role === "edge" ? " · CDN home proxy" : ""), short, planned });
       const b = div("bld" + provCls(pid) + (planned ? " planned" : ""), fp, { left: px(bx), top: px(y0), width: px(bw), height: px(bh) });
@@ -241,17 +255,21 @@ function build(e) {
           const v = vip(s.id)[0], vw = 5;
           els.set("st:" + v.id, div("tile st vip", fp, { left: px(cx - vw / 2), top: px(yVip + 0.5), width: px(vw), height: px(1.8) }));
           pos.set("st:" + v.id, { x: cx, y: yVip + 1.4 });
-          // Tailnet is a way in (remote access), so it stands in the ingress row beside the router.
-          if (e.stations.some((x) => x.id === "tailnet")) {
-            const i = ing.length + 1;
-            els.set("st:tailnet", div("tile st ts", fp, put("st:tailnet", i, yIng)));
-          }
         }
         service(s.id).forEach((o, i) => {
           const key = o.c ? "c:" + o.c.id : "st:" + o.s.id;
           els.set(key, div("tile " + (o.c ? "svc" : "st"), fp, put(key, i, ySvc, 2, 1.4)));
         });
         ry += rh + PAD;
+      }
+      // Tailscale is its own network, so it gets its own room: the tailnet, then every usable exit node.
+      if (tsHere) {
+        const rw = bw - PAD * 2, rx = bx + PAD, rh = RH + 0.6;
+        div("room ts-room", fp, { left: px(rx), top: px(ry), width: px(rw), height: px(rh) });
+        const put = (key, i) => { const x = rx + 1 + i * 3; pos.set(key, { x: x + 1, y: ry + 1.4 }); return { left: px(x), top: px(ry + 0.4), width: px(2), height: px(2) }; };
+        els.set("st:tailnet", div("tile st ts", fp, put("st:tailnet", 0)));
+        EXIT_NODES.forEach((x, i) => els.set("x:" + x.id, div("tile xn", fp, put("x:" + x.id, i + 1))));
+        pos.set("room:tailscale", { x: rx + rw - 6, y: ry + 0.5 });
       }
       bx += bw + GAP; rowH = Math.max(rowH, bh);
     }
@@ -282,7 +300,7 @@ function build(e) {
   });
   for (const h of e.hops) {
     // Probe and report legs are the status page's own plumbing, not the estate's network: inspector only.
-    if (h.kind === "probe" || h.kind === "report") continue;
+    if (h.kind === "probe" || h.kind === "report" || h.from === "tailnet") continue;
     const a = pos.get("st:" + h.from), b = pos.get("st:" + h.to);
     if (!a || !b) continue;
     const pts = [a, { x: b.x, y: a.y }, b];
@@ -326,7 +344,11 @@ function build(e) {
     }
   }
   for (const id of ["internet", "wg"]) label("st:" + id, id === "internet" ? "sign" : "", "", () => select("st", id), "o", "");
-  if (pos.get("st:tailnet")) label("st:tailnet", "", "", () => select("st", "tailnet"), "d", "home:origin");
+  if (pos.get("st:tailnet")) {
+    label("st:tailnet", "sign", "", () => select("st", "tailnet"), "d", "home:origin");
+    label("room:tailscale", "rm", "<b>Tailscale</b> · exit nodes", () => zoomTo("home:origin"), "rm", "home:origin");
+    for (const x of EXIT_NODES) label("x:" + x.id, "", "", () => select("x", x.id), "d", "home:origin");
+  }
   reanchor();
 }
 
@@ -380,6 +402,7 @@ function crumb() {
   if (zoom) parts.push(esc(bbox.get(zoom)?.name || zoom));
   if (sel) {
     const site = sel.t === "n" ? est.nodes.find((n) => n.id === sel.id)?.site : sel.t === "st" ? est.stations.find((s) => s.id === sel.id)?.site : sel.t === "c" ? serviceSite(est, est.components.find((c) => c.id === sel.id)) : null;
+    if (sel.t === "x") parts.push("Tailscale");
     if (site) parts.push(esc(est.sites.find((s) => s.id === site)?.name || site));
   }
   $("#crumb").innerHTML = parts.join(" › ");
@@ -417,7 +440,7 @@ function update(e) {
     l.className = `lb ${s.tier === "ingress" ? "sign " : ""}${s.kind === "vip" ? "vip " : ""}s-${s.planned ? "unknown" : worst}${!s.planned && worst !== "up" ? " alarm" : ""}`;
     if (s.kind === "vip") { l.innerHTML = `<b>Traefik</b> <span class="net">${VIP_IP}</span>`; continue; }
     // Latency only when a link is not healthy; healthy links just carry their name.
-    l.innerHTML = `<b>${esc(s.id === "wg" ? "WireGuard to DigitalOcean" : s.id === "tailnet" ? "Tailscale" : s.name.split(" · ")[0])}</b>${s.planned ? " · Planned" : worst !== "up" && lat ? " " + fmtMs(lat) : ""}`;
+    l.innerHTML = `<b>${esc(s.id === "wg" ? "WireGuard to DigitalOcean" : s.id === "tailnet" ? "Tailnet" : s.name.split(" · ")[0])}</b>${s.planned ? " · Planned" : worst !== "up" && lat ? " " + fmtMs(lat) : ""}`;
   }
   for (const c of e.components) {
     const l = lbs.get("c:" + c.id), t = els.get("c:" + c.id); if (!l) continue;
@@ -444,6 +467,12 @@ function update(e) {
     l.className = "lb rm" + (bad ? " s-degraded" : "");
     const sum = roomSummary(e, st);
     l.innerHTML = `<b>${esc(st.name)}</b>${st.planned ? " · Planned" : `${sum ? " · " + sum : ""}${bad ? ` · <span class="st st-degraded">${bad} need attention</span>` : ""}`}`;
+  }
+  for (const x of EXIT_NODES) {
+    const l = lbs.get("x:" + x.id), t = els.get("x:" + x.id); if (!l) continue;
+    l.className = `lb s-${sk(x.state)}${x.state !== "up" ? " alarm" : ""}`;
+    l.innerHTML = `${esc(x.name)} <span class="st st-${sk(x.state)}">${stateWord(x.state)}</span>`;
+    t.className = `tile xn s-${sk(x.state)}`;
   }
   highlight();
   if (sel) inspect();
@@ -533,6 +562,9 @@ function inspect() {
     h = `<h2>${esc(s.name)}</h2><p>${esc(s.kind)} · ${esc(s.site || "between buildings")} · ${s.tier}${s.planned ? " · planned" : ""}</p>
       <table><tbody>${hs.map((x) => `<tr><td>${x.from === s.id ? "→ " + esc(x.to) : "← " + esc(x.from)}</td><td>${esc(x.label)}</td><td>${fmtMs(x.latency_ms)}</td><td><span class="st st-${sk(x.state)}">${stateWord(x.state)}</span></td></tr>`).join("") || "<tr><td>No links yet</td></tr>"}</tbody></table>
       <p>Routes: ${e.components.filter((c) => c.via.some((v) => ids.has(v))).map((c) => esc(c.name)).join(", ") || "—"}</p>${hs[0] ? `<p><a href="#row-hop-${esc(hs[0].id)}">Show in table</a></p>` : ""}`;
+  } else if (sel.t === "x") {
+    const x = EXIT_NODES.find((y) => y.id === sel.id);
+    h = `<h2>Exit node ${esc(x.name)}</h2><p><span class="st st-${sk(x.state)}">${stateWord(x.state)}</span> · ${esc(x.where)}</p><p>Usable as a Tailscale exit node. Status is a fixed sample until the tailnet is reported.</p>`;
   } else {
     const c = e.components.find((x) => x.id === sel.id);
     const outs = e.outages.filter((o) => o.id === c.id);
