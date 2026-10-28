@@ -20,14 +20,14 @@
 .bld{position:absolute;border:2px solid var(--fg);background:var(--panel)}
 .bld .front{position:absolute;left:0;right:0;bottom:-2px;height:0;box-shadow:0 10px 0 0 color-mix(in srgb,var(--fg) 45%,var(--bg))}
 .bld .frontr{position:absolute;top:0;bottom:0;right:-2px;width:0;box-shadow:10px 0 0 0 color-mix(in srgb,var(--fg) 30%,var(--bg))}
-.bld.planned,.room.planned{border-style:dashed;background:transparent}
+.bld.planned,.room.planned{border-style:dashed;background:transparent;border-color:var(--line);color:var(--muted);opacity:.55}
 .bld.planned .front,.bld.planned .frontr{display:none}
 .room{position:absolute;border:1px solid var(--line);background:var(--bg);
   background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:24px 24px}
 .row{position:absolute;left:0;right:0;border-top:1px dashed var(--line)}
 .tile{position:absolute;border:1px solid var(--line);border-radius:3px;background:var(--panel)}
 .tile.st{background:color-mix(in srgb,var(--accent) 16%,var(--bg))}
-.tile.st.planned{background:transparent;border-style:dashed}
+.tile.st.planned{background:transparent;border-style:dashed;opacity:.55}
 .tile.svc{background:var(--panel)}
 .rack{position:absolute;border:1px solid var(--fg);background:var(--panel);display:flex;flex-direction:column;justify-content:flex-end;gap:2px;padding:3px}
 .rack i{display:block;height:4px;border-radius:1px;background:var(--ok)}.rack i.w{background:var(--warn)}.rack i.b{background:var(--bad)}
@@ -49,6 +49,7 @@
   border:1px solid var(--line);border-radius:5px;background:color-mix(in srgb,var(--bg) 88%,transparent);color:var(--fg);padding:.05rem .3rem;cursor:pointer}
 .lb b{font-weight:600}
 .lb.bl{font-size:.85rem;font-weight:700;border-color:var(--fg);transform:translate(-50%,-100%) scale(var(--inv,1))}
+.lb.planned{color:var(--muted);font-weight:400;border-color:var(--line)}
 .lb.rm{font-size:.72rem;color:var(--muted)}
 .lb.rm b{color:var(--fg)}
 .lb.s-down{border-color:var(--bad)}.lb.s-degraded{border-color:var(--warn)}
@@ -91,6 +92,25 @@ scenarioBar($("#scenario-bar"));
 const reduce = matchMedia("(prefers-reduced-motion: reduce)");
 const sk = (s) => (["up", "degraded", "down"].includes(s) ? s : "unknown");
 const grade = (p) => (p >= 90 ? "b" : p >= 75 ? "w" : "");
+// Node network rates are bytes per second (rate(node_network_*_bytes_total[5m])).
+const bps = (n) => (n == null ? "—" : fmtBytes(n) + "/s");
+const net = (rx, tx) => `↓${bps(rx)} ↑${bps(tx)}`;
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+
+// What a room holds, in words: WAN, machines and hostnames, clusters, droplets, edge nodes.
+function roomSummary(e, st, ns) {
+  const parts = [], has = (r) => ns.filter((n) => n.role === r).length;
+  if (st.id === "isp-lan") parts.push(`WAN1: <span class="chip locked">IP hidden</span>`, plural(ns.length, "machine"));
+  if (st.id === "house") {
+    const hosts = (e.routes || []).filter((r) => r.kind === "request" && r.to === "traefik").reduce((a, r) => a + (r.hosts?.length || 0), 0);
+    parts.push(plural(ns.length, "machine") + (hosts ? ` · ${plural(hosts, "hostname")}` : ""));
+  }
+  if (has("doks")) parts.push(plural(has("doks"), "kube cluster") + (e.stations.some((s) => s.site === st.id && s.kind === "lb") ? " · load balancer" : ""));
+  if (has("droplet")) parts.push(plural(has("droplet"), "droplet"));
+  if (has("edge")) parts.push(plural(has("edge"), "edge node"));
+  if (!parts.length && ns.length) parts.push(plural(ns.length, "machine"));
+  return parts.join(" · ");
+}
 
 const U = 24;                          // px per tile in floor-plan space
 const SITE_ORDER = ["isp-lan", "house", "nyc1", "tor1", "ash", "do-edge"];
@@ -127,8 +147,7 @@ function build(e) {
   const ingress = (sid) => e.stations.filter((s) => s.site === sid && s.tier === "ingress");
   const compute = (sid) => [...e.nodes.filter((n) => n.site === sid).map((n) => ({ n })), ...e.stations.filter((s) => s.site === sid && s.tier === "compute").map((s) => ({ s }))];
   const service = (sid) => [...e.components.filter((c) => serviceSite(e, c) === sid).map((c) => ({ c })), ...e.stations.filter((s) => s.site === sid && s.tier === "service").map((s) => ({ s }))];
-  const roomW = (sid) => Math.max(6, ingress(sid).length * 3, compute(sid).length * 3, service(sid).length * 3) + 1;
-  const roomH = ROW_H * 3 + 2;
+  const roomW = (sid, min) => Math.max(min, ingress(sid).length * 3, compute(sid).length * 3, service(sid).length * 3) + 1;
   const LEFT = 5, STREET_Y = -4;
   let y0 = 0, maxX = 0;
   for (const row of BUILDING_ROWS) {
@@ -138,17 +157,20 @@ function build(e) {
       const prov = e.providers.find((p) => p.id === pid);
       const sites = SITE_ORDER.map((id) => e.sites.find((s) => s.id === id)).filter((s) => s && bkOf(s) === bk);
       if (!prov || !sites.length) continue;
+      // Planned buildings are drawn compact: narrower rooms and no service row.
       const planned = sites.every((s) => s.planned);
-      const bw = Math.max(...sites.map((s) => roomW(s.id))) + PAD * 2;
+      const roomH = planned ? ROW_H * 2 + 2 : ROW_H * 3 + 2;
+      const bw = Math.max(...sites.map((s) => roomW(s.id, planned ? 4 : 6))) + PAD * 2;
       const bh = sites.length * (roomH + PAD) + PAD;
-      bbox.set(bk, { x: bx, y: y0, w: bw, h: bh, name: prov.name + (role === "edge" ? " · CDN home proxy" : ""), planned });
+      const short = prov.name + (role === "edge" && e.sites.some((s) => s.provider === pid && s.role !== "edge") ? " edge" : "");
+      bbox.set(bk, { x: bx, y: y0, w: bw, h: bh, name: prov.name + (role === "edge" ? " · CDN home proxy" : ""), short, planned });
       const b = div("bld" + (planned ? " planned" : ""), fp, { left: px(bx), top: px(y0), width: px(bw), height: px(bh) });
       div("front", b); div("frontr", b);
       let ry = y0 + PAD;
       for (const s of sites) {
         const rw = bw - PAD * 2, rx = bx + PAD;
         div("room" + (s.planned ? " planned" : ""), fp, { left: px(rx), top: px(ry), width: px(rw), height: px(roomH) });
-        [1, 2].forEach((k) => div("row", fp, { left: px(rx), width: px(rw), top: px(ry + k * (ROW_H + 0.66)) }));
+        (planned ? [1] : [1, 2]).forEach((k) => div("row", fp, { left: px(rx), width: px(rw), top: px(ry + k * (ROW_H + 0.66)) }));
         pos.set("room:" + s.id, { x: rx + 0.6, y: ry + roomH / 2 });
         const place = (key, i, rowIdx, w = 2, h = 2) => { const x = rx + 1 + i * 3, y = ry + 0.4 + rowIdx * (ROW_H + 0.66); pos.set(key, { x: x + w / 2, y: y + h / 2 }); return { left: px(x), top: px(y), width: px(w), height: px(h) }; };
         ingress(s.id).forEach((st, i) => els.set("st:" + st.id, div("tile st" + (st.planned ? " planned" : ""), fp, place("st:" + st.id, i, 0))));
@@ -217,7 +239,8 @@ function build(e) {
   for (const row of BUILDING_ROWS) for (const bk of row) {
     const bb = bbox.get(bk); if (!bb) continue;
     pos.set("b:" + bk, { x: bb.x + bb.w / 2, y: bb.y - 0.2 });
-    label("b:" + bk, "bl", `${esc(bb.name)}${bb.planned ? " · planned" : ""}`, () => zoomTo(zoom === bk ? null : bk), "b", bk);
+    label("b:" + bk, "bl" + (bb.planned ? " planned" : ""), esc(bb.planned ? bb.short + " · planned" : bb.name), () => zoomTo(zoom === bk ? null : bk), "b", bk);
+    lbs.get("b:" + bk).title = bb.name + (bb.planned ? " · planned" : "");
     for (const sid of SITE_ORDER) {
       const s = e.sites.find((x) => x.id === sid); if (!s || bkOf(s) !== bk) continue;
       label("room:" + sid, "rm", "", () => zoomTo(bk), "rm", bk);
@@ -294,7 +317,7 @@ function update(e) {
     r.style.boxShadow = `${hgt * 0.7}px ${hgt * 0.7}px 0 color-mix(in srgb, var(--fg) 35%, var(--bg))`;
     l.className = `lb s-${sk(n.state)}${n.state !== "up" ? " alarm" : ""}`;
     l.innerHTML = `<b>${esc(n.name)}</b> ${n.state === "unknown" ? "Not reporting" : `${fmtPct(n.cpu_pct)} · ${fmtPct(n.ram_pct)}`}`;
-    l.setAttribute("aria-label", `rack ${n.name}: ${stateWord(n.state)}, cpu ${fmtPct(n.cpu_pct)}, ram ${fmtPct(n.ram_pct)}, disk ${fmtPct(n.disk_pct)}`);
+    l.setAttribute("aria-label", `rack ${n.name}: ${stateWord(n.state)}, cpu ${fmtPct(n.cpu_pct)}, ram ${fmtPct(n.ram_pct)}, disk ${fmtPct(n.disk_pct)}, network in ${bps(n.net_rx_bps)} out ${bps(n.net_tx_bps)}`);
   }
   for (const s of e.stations) {
     const l = lbs.get("st:" + s.id); if (!l) continue;
@@ -319,7 +342,7 @@ function update(e) {
     cb.speed = h.latency_ms ? Math.max(0.05, Math.min(0.5, 6 / h.latency_ms)) : 0.1;
   }
   const up = e.components.filter((c) => c.state === "up").length;
-  $("#sum").textContent = `${up}/${e.components.length} services up · ${e.nodes.length} racks · ${e.hops.length} links · layout: ${e.layout === "target" ? "Target" : "Today"}`;
+  $("#sum").textContent = `${up}/${e.components.length} services up · ${e.nodes.length} machines · ${e.hops.length} links · layout: ${e.layout === "target" ? "Target" : "Today"}`;
   $("#ages").textContent = `pite last report ${fmtAge(e.home_age_s)}${e.sample_age_s ? " · data " + fmtAge(e.sample_age_s) : ""}${e.load_error ? " · " + e.load_error : ""}`;
   for (const st of e.sites) {
     const l = lbs.get("room:" + st.id); if (!l) continue;
@@ -327,7 +350,9 @@ function update(e) {
     const cs = e.components.filter((c) => serviceSite(e, c) === st.id);
     const bad = [...ns, ...cs].filter((x) => x.state !== "up").length;
     l.className = "lb rm" + (bad ? " s-degraded" : "");
-    l.innerHTML = `<b>${esc(st.name)}</b>${st.planned ? " · Planned" : ` · ${ns.length} rack${ns.length === 1 ? "" : "s"}${cs.length ? ` · ${cs.length} svc` : ""}${bad ? ` · <span class="st st-degraded">${bad} need attention</span>` : ""}`}`;
+    const rx = ns.reduce((a, n) => a + (n.net_rx_bps ?? 0), 0), tx = ns.reduce((a, n) => a + (n.net_tx_bps ?? 0), 0);
+    const sum = roomSummary(e, st, ns);
+    l.innerHTML = `<b>${esc(st.name)}</b>${st.planned ? " · Planned" : `${sum ? " · " + sum : ""}${rx + tx > 0 ? ` · ${net(rx, tx)}` : ""}${bad ? ` · <span class="st st-degraded">${bad} need attention</span>` : ""}`}`;
   }
   highlight();
   if (sel) inspect();
@@ -380,7 +405,7 @@ function inspect() {
     const n = e.nodes.find((x) => x.id === sel.id); if (!n) return clearSel();
     const ws = e.workloads.filter((w) => w.node === n.id).sort((a, b) => b.ram_req_bytes - a.ram_req_bytes);
     const ub = (k, p) => `<span>${k}</span><span><i class="${grade(p)}" style="width:${p}%"></i></span><span>${fmtPct(p)}</span>`;
-    h = `<h2>Rack ${esc(n.name)}</h2><p><span class="st st-${sk(n.state)}">${stateWord(n.state)}</span> · ${esc(n.role)} · ${n.arch}<br>${n.lan_ip ? esc(n.lan_ip) : "—"}${n.public_ip_locked ? ' <span class="chip locked">Sign in to reveal</span>' : ""}<br>${n.cpu_cores} cores · ${fmtBytes(n.ram_bytes)} · ${fmtBytes(n.disk_bytes)}<br>reported ${n.age_s == null ? "not measured" : fmtAge(n.age_s)}</p>
+    h = `<h2>Rack ${esc(n.name)}</h2><p><span class="st st-${sk(n.state)}">${stateWord(n.state)}</span> · ${esc(n.role)} · ${n.arch}<br>${n.lan_ip ? esc(n.lan_ip) : "—"}${n.public_ip_locked ? ' <span class="chip locked">Sign in to reveal</span>' : ""}<br>${n.cpu_cores} cores · ${fmtBytes(n.ram_bytes)} · ${fmtBytes(n.disk_bytes)}<br>network ${net(n.net_rx_bps, n.net_tx_bps)}<br>reported ${n.age_s == null ? "not measured" : fmtAge(n.age_s)}</p>
       <div class="ub">${ub("cpu", n.cpu_pct)}${ub("ram", n.ram_pct)}${ub("disk", n.disk_pct)}</div>
       <p><strong>Tenants</strong> (RAM requests packed)</p><div class="pack">${ws.map((w) => `<i style="width:${((100 * w.ram_req_bytes) / n.ram_bytes).toFixed(2)}%" title="${esc(w.name)}"></i>`).join("")}</div>
       <table><tbody>${ws.map((w) => `<tr><td>${esc(w.name)}${movedFrom.has(w.id) ? ` <span class="moved">moved from ${esc(movedFrom.get(w.id).from)}</span>` : ""}</td><td>${fmtBytes(w.ram_req_bytes)} · ${w.ram_bytes == null ? "?" : fmtBytes(w.ram_bytes)}</td><td>${w.ready ? "ready" : "not ready"} · ${w.restarts}↻</td><td>${esc(w.version || "")}</td></tr>`).join("") || "<tr><td>No workloads</td></tr>"}</tbody></table>
