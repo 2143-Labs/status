@@ -25,6 +25,14 @@ status-origin.2143.me {
 	handle /home-status {
 		reverse_proxy 127.0.0.1:8080
 	}
+	# Host metrics for home Alloy. Password lives in OpenBao
+	# consumers/john2143-com/observability/status-scraper; only its bcrypt hash is here.
+	handle /metrics {
+		basic_auth {
+			scraper $2a$14$BhPIdvdIoBs7Tq97otGy/OkCoC2WINVEZ3lWzYekXJTzUcldhfRbC
+		}
+		reverse_proxy 127.0.0.1:9100
+	}
 	handle {
 		root * /var/lib/status/www
 		file_server
