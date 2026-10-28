@@ -55,6 +55,23 @@
 .lb.rm b{color:var(--fg)}
 .lb.s-down{border-color:var(--bad)}.lb.s-degraded{border-color:var(--warn)}
 .lb.sign{font-weight:600}
+/* Provider identity colours. Chosen in OKLCH: one lightness per mode (ink L .45 light / .80 dark, tint L .95 / .28)
+   so Home and DigitalOcean carry equal visual weight and differ only in hue; hues sit away from the status hues
+   (ok/warn/bad/accent) so a building never reads as a state. ?scheme=map|slate|mono */
+:root{--home-ink:#605612;--home-tint:#f3efd9;--do-ink:#006173;--do-tint:#d9f4fb}
+:root[data-scheme=slate]{--home-ink:#833f27;--home-tint:#ffe7dd;--do-ink:#295b77;--do-tint:#e0f2fd}
+:root[data-scheme=mono]{--home-ink:var(--fg);--home-tint:var(--bg);--do-ink:var(--fg);--do-tint:var(--bg)}
+@media (prefers-color-scheme:dark){
+  :root{--home-ink:#cabf7f;--home-tint:#2c2918;--do-ink:#7acce0;--do-tint:#172d32}
+  :root[data-scheme=slate]{--home-ink:#f6a88d;--home-tint:#38231c;--do-ink:#92c6e5;--do-tint:#1d2b33}
+  :root[data-scheme=mono]{--home-ink:var(--fg);--home-tint:var(--bg);--do-ink:var(--fg);--do-tint:var(--bg)}
+}
+.p-home{--ink:var(--home-ink);--tint:var(--home-tint)}.p-do{--ink:var(--do-ink);--tint:var(--do-tint)}
+.bld.p-home:not(.planned),.bld.p-do:not(.planned){border-color:var(--ink)}
+.bld.p-home .front,.bld.p-do .front{box-shadow:0 10px 0 0 color-mix(in srgb,var(--ink) 55%,var(--bg))}
+.bld.p-home .frontr,.bld.p-do .frontr{box-shadow:10px 0 0 0 color-mix(in srgb,var(--ink) 35%,var(--bg))}
+.lb.bl.p-home:not(.planned),.lb.bl.p-do:not(.planned){color:var(--ink);background:var(--tint);border-color:var(--ink);box-shadow:3px 3px 0 color-mix(in srgb,var(--ink) 35%,var(--bg))}
+.head select{font:inherit;font-size:.8rem;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px}
 .insp{position:sticky;top:3.2rem;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:.7rem .8rem;font-size:.85rem;max-height:calc(100vh - 4rem);overflow:auto}
 .insp h2{font-size:1rem;margin:0 0 .3rem}
 .insp .x{float:right;font:inherit;background:none;border:1px solid var(--line);border-radius:4px;color:var(--fg);cursor:pointer}
@@ -74,7 +91,7 @@
 <div id="scenario-bar"></div>
 <p id="notice" class="mode-notice" hidden></p>
 <main id="stage" aria-describedby="plain-h">
-  <div class="head"><h1>Lab</h1><span id="sum"></span><span id="ages"></span></div>
+  <div class="head"><h1>Lab</h1><span id="sum"></span><span id="ages"></span><label>Colours <select id="scheme"><option value="map">Map: earth / sea</option><option value="slate">Clay / slate</option><option value="mono">Mono</option></select></label></div>
   <p class="crumb" id="crumb"></p>
   <div class="wrap">
     <div class="view" id="view"><div class="cam" id="cam"><div class="floorplan" id="fp" aria-hidden="true"></div><div class="ov" id="ov"></div></div></div>
@@ -90,6 +107,14 @@ const $ = (s) => document.querySelector(s);
 const stage = $("#stage"), plain = $("#plain"), fp = $("#fp"), ov = $("#ov"), cam = $("#cam"), insp = $("#insp");
 const mode = mountModes({ stage, plain, notice: $("#notice") });
 scenarioBar($("#scenario-bar"));
+// Provider colour scheme, from ?scheme= (default map); the picker rewrites the URL so a link keeps it.
+{
+  const q = new URLSearchParams(location.search), pick = $("#scheme");
+  const set = (v) => { v = ["map", "slate", "mono"].includes(v) ? v : "map"; document.documentElement.dataset.scheme = v; pick.value = v; };
+  set(q.get("scheme"));
+  pick.addEventListener("change", () => { set(pick.value); q.set("scheme", pick.value); history.replaceState(null, "", "?" + q); });
+}
+const provCls = (pid) => (pid === "home" ? " p-home" : pid === "do" ? " p-do" : "");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)");
 const sk = (s) => (["up", "degraded", "down"].includes(s) ? s : "unknown");
 const grade = (p) => (p >= 90 ? "b" : p >= 75 ? "w" : "");
@@ -165,7 +190,7 @@ function build(e) {
       const bh = sites.length * (roomH + PAD) + PAD;
       const short = prov.name + (role === "edge" && e.sites.some((s) => s.provider === pid && s.role !== "edge") ? " edge" : "");
       bbox.set(bk, { x: bx, y: y0, w: bw, h: bh, name: prov.name + (role === "edge" ? " · CDN home proxy" : ""), short, planned });
-      const b = div("bld" + (planned ? " planned" : ""), fp, { left: px(bx), top: px(y0), width: px(bw), height: px(bh) });
+      const b = div("bld" + provCls(pid) + (planned ? " planned" : ""), fp, { left: px(bx), top: px(y0), width: px(bw), height: px(bh) });
       div("front", b); div("frontr", b);
       let ry = y0 + PAD;
       for (const s of sites) {
@@ -240,7 +265,7 @@ function build(e) {
   for (const row of BUILDING_ROWS) for (const bk of row) {
     const bb = bbox.get(bk); if (!bb) continue;
     pos.set("b:" + bk, { x: bb.x + bb.w / 2, y: bb.y - 0.2 });
-    label("b:" + bk, "bl" + (bb.planned ? " planned" : ""), esc(bb.planned ? bb.short + " · planned" : bb.name), () => zoomTo(zoom === bk ? null : bk), "b", bk);
+    label("b:" + bk, "bl" + provCls(bk.split(":")[0]) + (bb.planned ? " planned" : ""), esc(bb.planned ? bb.short + " · planned" : bb.name), () => zoomTo(zoom === bk ? null : bk), "b", bk);
     lbs.get("b:" + bk).title = bb.name + (bb.planned ? " · planned" : "");
     for (const sid of SITE_ORDER) {
       const s = e.sites.find((x) => x.id === sid); if (!s || bkOf(s) !== bk) continue;
