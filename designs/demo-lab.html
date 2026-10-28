@@ -76,6 +76,9 @@
 .tile.st.ts{border:2px solid var(--info);border-radius:50%;background:color-mix(in srgb,var(--info) 18%,var(--bg))}
 .room.ts-room{border-color:var(--info);border-style:dashed}
 .tile.xn{border-radius:50%;border:2px solid var(--ok);background:color-mix(in srgb,var(--ok) 14%,var(--bg))}
+.lb.tip:not(.alarm){z-index:5;transform:scale(var(--inv,1)) translate(-50%,0);box-shadow:0 2px 6px color-mix(in srgb,var(--fg) 25%,transparent)}
+.hot{cursor:pointer}.hot:hover{outline:2px solid var(--accent);outline-offset:1px}
+.lb.ts-l{transform:scale(var(--inv,1)) translate(0,-50%);border-color:transparent;background:none}
 .lb.ts-l b{color:var(--info)}
 .ts-strip{position:absolute;border:1.5px dashed var(--info);border-radius:6px;background:color-mix(in srgb,var(--info) 5%,transparent)}
 .tile.dp{border:2px dashed var(--info);border-radius:3px;transform:rotate(45deg) scale(.8);background:color-mix(in srgb,var(--info) 12%,var(--bg))}
@@ -224,8 +227,8 @@ function build(e) {
   const compact = (s) => !s.planned && !vip(s.id).length && !service(s.id).length;
   // Tailscale things that run in a room (an exit node on nas, a relay in DOKS) get a row of their own there.
   const tsIn = (sid) => [...DERP.filter((x) => x.site === sid).map((x) => ({ k: "dp:" + x.id, cls: "dp" })), ...EXIT_NODES.filter((x) => x.site === sid).map((x) => ({ k: "x:" + x.id, cls: "xn" }))];
-  const TS_RH = RH + 1.4;   // a Tailscale row: tiles plus two rows of labels under them
-  const roomW = (sid, min) => { const s = e.sites.find((x) => x.id === sid); return Math.max(min, compact(s) ? (ingress(sid).length + compute(sid).length) * 3 : Math.max(ingress(sid).length, compute(sid).length, service(sid).length) * 3) + 1; };
+  const TS_RH = RH;   // a Tailscale row: tiles only; their names are hover tips
+  const roomW = (sid, min) => { const s = e.sites.find((x) => x.id === sid); return Math.max(min, tsIn(sid).length ? tsIn(sid).length * 3 + 5 : 0, compact(s) ? (ingress(sid).length + compute(sid).length) * 3 : Math.max(ingress(sid).length, compute(sid).length, service(sid).length) * 3) + 1; };
   const LEFT = 5, STREET_Y = -4;
   let y0 = 0, maxX = 0;
   for (const row of BUILDING_ROWS) {
@@ -285,7 +288,7 @@ function build(e) {
           const yTs = ry + rh - TS_RH;
           div("row", fp, { left: px(rx), width: px(rw), top: px(yTs) });
           div("ts-strip", fp, { left: px(rx + 0.5), top: px(yTs + 0.2), width: px(rw - 1), height: px(TS_RH - 0.4) });
-          pos.set("tsl:" + s.id, { x: rx + ti.length * 3 + 3.2, y: yTs + 1.2 });
+          pos.set("tsl:" + s.id, { x: rx + ti.length * 3 + 2.4, y: yTs + RH / 2 });
           ti.forEach((o, i) => els.set(o.k, div("tile " + o.cls, fp, put(o.k, i, yTs))));
         }
         ry += rh + PAD;
@@ -356,8 +359,19 @@ function build(e) {
     if (!pos.get(key)) return;
     const l = document.createElement("button"); l.type = "button"; l.className = "lb " + cls;
     l.innerHTML = html; l.pk = key;
+    // Services, exit nodes and relays are many small tiles: their names are hover tips, not standing labels.
+    // The tile's colour carries the status; a tile that is not up keeps its label showing.
+    const tip = /^(c|x|dp):/.test(key) && lvl === "d";
+    if (tip) { l.classList.add("tip"); lvl = "h"; }
     l.dataset.lvl = lvl; l.dataset.bk = bk || "";
     l.addEventListener("click", on); ov.append(l); lbs.set(key, l);
+    const el = tip && els.get(key);
+    if (el) {
+      el.classList.add("hot");
+      el.addEventListener("click", on);
+      el.addEventListener("mouseenter", () => showTip(l, el, true));
+      el.addEventListener("mouseleave", () => showTip(l, el, false));
+    }
   };
   for (const row of BUILDING_ROWS) for (const bk of row) {
     const bb = bbox.get(bk); if (!bb) continue;
@@ -380,7 +394,7 @@ function build(e) {
   for (const id of ["internet", "wg"]) label("st:" + id, id === "internet" ? "sign" : "", "", () => select("st", id), "o", "");
   if (pos.get("st:tailnet")) {
     label("st:tailnet", "sign", "", () => select("st", "tailnet"), "d", "home:origin");
-    for (const sid of SITE_ORDER) if (pos.get("tsl:" + sid)) label("tsl:" + sid, "rm ts-l", "<b>Tailscale</b> · runs here", () => select("st", "tailnet"), "d", bkOf(e.sites.find((y) => y.id === sid)));
+    for (const sid of SITE_ORDER) if (pos.get("tsl:" + sid)) label("tsl:" + sid, "rm ts-l", "<b>Tailscale</b>", () => select("st", "tailnet"), "d", bkOf(e.sites.find((y) => y.id === sid)));
     label("room:tailscale", "rm", "<b>Tailscale</b> · tailnet and third-party exit nodes", () => zoomTo("home:origin"), "rm", "home:origin");
     for (const x of DERP) label("dp:" + x.id, "", "", () => select("dp", x.id), "d", bkOf(e.sites.find((y) => y.id === x.site)));
     for (const x of EXIT_NODES) label("x:" + x.id, "", "", () => select("x", x.id), "d", x.site ? bkOf(e.sites.find((y) => y.id === x.site)) : "home:origin");
@@ -394,6 +408,7 @@ function lod() {
     const lvl = l.dataset.lvl;
     let show = lvl === "b" || lvl === "rm" || lvl === "o";
     if (lvl === "d") show = zoom ? l.dataset.bk === zoom : l.classList.contains("alarm");
+    if (lvl === "h") show = l.classList.contains("alarm") && (!zoom || l.dataset.bk === zoom);
     if (lvl === "rm" && zoom && l.dataset.bk !== zoom) show = false;
     l.hidden = show === false;
   }
@@ -464,7 +479,7 @@ function update(e) {
     // Extruded height ∝ log RAM, drawn as a solid offset shadow.
     const hgt = Math.round(Math.max(6, Math.min(28, 4 * Math.log2(n.ram_bytes / 2 ** 28))));
     r.style.boxShadow = `${hgt * 0.7}px ${hgt * 0.7}px 0 color-mix(in srgb, var(--fg) 35%, var(--bg))`;
-    l.className = `lb s-${sk(n.state)}${n.state !== "up" ? " alarm" : ""}`;
+    l.className = `lb ${l.classList.contains("tip") ? "tip " : ""}s-${sk(n.state)}${n.state !== "up" ? " alarm" : ""}`;
     l.innerHTML = `<b>${esc(n.name)}</b>${n.state === "unknown" ? " Not reporting" : n.state !== "up" ? " " + stateWord(n.state) : ""}`;
     l.setAttribute("aria-label", `rack ${n.name}: ${stateWord(n.state)}, cpu ${fmtPct(n.cpu_pct)}, ram ${fmtPct(n.ram_pct)}, disk ${fmtPct(n.disk_pct)}, network in ${bps(n.net_rx_bps)} out ${bps(n.net_tx_bps)}`);
   }
@@ -480,7 +495,7 @@ function update(e) {
   }
   for (const c of e.components) {
     const l = lbs.get("c:" + c.id), t = els.get("c:" + c.id); if (!l) continue;
-    l.className = `lb s-${sk(c.state)}${c.state !== "up" ? " alarm" : ""}`;
+    l.className = `lb ${l.classList.contains("tip") ? "tip " : ""}s-${sk(c.state)}${c.state !== "up" ? " alarm" : ""}`;
     l.innerHTML = `${esc(c.name)} <span class="st st-${sk(c.state)}">${stateWord(c.state)}</span>`;
     t.style.background = c.state === "up" ? "" : `var(--${c.state === "down" ? "bad" : c.state === "degraded" ? "warn" : "line"})`;
   }
@@ -506,13 +521,13 @@ function update(e) {
   }
   for (const x of DERP) {
     const l = lbs.get("dp:" + x.id), t = els.get("dp:" + x.id); if (!l) continue;
-    l.className = `lb s-${sk(x.state)}${x.state !== "up" ? " alarm" : ""}`;
+    l.className = `lb ${l.classList.contains("tip") ? "tip " : ""}s-${sk(x.state)}${x.state !== "up" ? " alarm" : ""}`;
     l.innerHTML = `DERP ${esc(x.name)} <span class="st st-${sk(x.state)}">${stateWord(x.state)}</span>`;
     t.className = `tile dp s-${sk(x.state)}`;
   }
   for (const x of EXIT_NODES) {
     const l = lbs.get("x:" + x.id), t = els.get("x:" + x.id); if (!l) continue;
-    l.className = `lb s-${sk(x.state)}${x.state !== "up" ? " alarm" : ""}`;
+    l.className = `lb ${l.classList.contains("tip") ? "tip " : ""}s-${sk(x.state)}${x.state !== "up" ? " alarm" : ""}`;
     l.innerHTML = `${esc(x.name)} <span class="st st-${sk(x.state)}">${stateWord(x.state)}</span>`;
     t.className = `tile xn s-${sk(x.state)}`;
   }
@@ -545,7 +560,7 @@ function declutter() {
   const obst = [...fp.querySelectorAll(".rack,.tile,.kube")].map((d) => box(parseFloat(d.style.left) / U, parseFloat(d.style.top) / U, parseFloat(d.style.width) / U, parseFloat(d.style.height) / U, d.classList.contains("kube") ? k * 0.85 : k));
   // Labels pinned under a drawn thing go before the free ones, so the free ones work around them.
   const rank = (l) => (l.classList.contains("bl") ? 0 : els.get(l.pk)?.style.width ? 1 : l.dataset.lvl === "rm" ? 2 : 3);
-  const all = [...lbs.values()].filter((l) => l.bx != null && !l.hidden).sort((a, b) => rank(a) - rank(b) || a.by - b.by || a.bx - b.bx);
+  const all = [...lbs.values()].filter((l) => l.bx != null && !l.hidden && !(l.classList.contains("tip") && !l.classList.contains("alarm")) && !l.classList.contains("ts-l")).sort((a, b) => rank(a) - rank(b) || a.by - b.by || a.bx - b.bx);
   const cover = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) + G) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) + G);
   const outside = (b) => Math.max(0, V.x - b.x) + Math.max(0, b.x + b.w - V.x - V.w) + Math.max(0, V.y - b.y) + Math.max(0, b.y + b.h - V.y - V.h);
   // Labels pinned under a thing ignore the k3s box: it is a container, its racks are what they name.
@@ -596,6 +611,14 @@ function declutter() {
   }
 }
 
+// A hover tip sits just under its tile, above everything else, and is not part of the label layout.
+function showTip(l, el, on) {
+  if (l.classList.contains("alarm")) return;
+  l.hidden = !on; if (!on) return;
+  const x = parseFloat(el.style.left) / U, y = parseFloat(el.style.top) / U, w = parseFloat(el.style.width) / U, h = parseFloat(el.style.height) / U;
+  const q = project(x + w / 2, y + h);
+  l.style.left = q.x + "px"; l.style.top = q.y + 4 * (parseFloat(cam.style.getPropertyValue("--inv")) || 1) + "px";
+}
 function select(t, id) { sel = sel && sel.t === t && sel.id === id ? null : { t, id }; if (!sel) return clearSel(); inspect(); highlight(); crumb(); }
 function clearSel() {
   const k = sel ? (sel.t === "st" ? "st:" : sel.t + ":") + sel.id : null;
