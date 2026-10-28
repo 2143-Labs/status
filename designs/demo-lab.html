@@ -55,6 +55,14 @@
 .lb.rm b{color:var(--fg)}
 .lb.s-down{border-color:var(--bad)}.lb.s-degraded{border-color:var(--warn)}
 .lb.sign{font-weight:600}
+.kube{position:absolute;border:1.5px solid var(--accent);border-radius:4px;background:color-mix(in srgb,var(--accent) 9%,transparent)}
+.tile.st.vip{border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 22%,var(--bg))}
+.cable.k-vip{background:var(--accent);opacity:.9}
+.cable.k-route{background:repeating-linear-gradient(90deg,var(--accent) 0 4px,transparent 4px 8px);opacity:.8}
+.cable.k-route.v{background:repeating-linear-gradient(180deg,var(--accent) 0 4px,transparent 4px 8px)}
+.lb.vip{font-weight:600;border-color:var(--accent);color:var(--fg)}
+.lb.kube-l{color:var(--accent);border-color:var(--accent)}
+.net{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.95em;color:var(--fg)}
 /* Provider identity colours. Chosen in OKLCH: one lightness per mode (ink L .45 light / .80 dark, tint L .95 / .28)
    so Home and DigitalOcean carry equal visual weight and differ only in hue; hues sit away from the status hues
    (ok/warn/bad/accent) so a building never reads as a state. ?scheme=map|slate|mono */
@@ -124,12 +132,14 @@ const net = (rx, tx) => `↓${bps(rx)} ↑${bps(tx)}`;
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 // What a room holds, in words: WAN, machines and hostnames, clusters, droplets, edge nodes.
+// Home address plan (RFC 1918, safe to publish): Verizon LAN, internal clients, Traefik VIP pool.
+const SUBNET = { verizon: "192.168.0.0/24", lan: "192.168.5.0/24", vip: "192.168.6.0/24" }, VIP_IP = "192.168.6.6";
 function roomSummary(e, st, ns) {
   const parts = [], has = (r) => ns.filter((n) => n.role === r).length;
-  if (st.id === "isp-lan") parts.push(`WAN1: <span class="chip locked">IP hidden</span>`, plural(ns.length, "machine"));
+  if (st.id === "isp-lan") parts.push(`<span class="net">${SUBNET.verizon}</span>`, `WAN1: <span class="chip locked">IP hidden</span>`, plural(ns.length, "machine"));
   if (st.id === "house") {
     const hosts = (e.routes || []).filter((r) => r.kind === "request" && r.to === "traefik").reduce((a, r) => a + (r.hosts?.length || 0), 0);
-    parts.push(plural(ns.length, "machine") + (hosts ? ` · ${plural(hosts, "hostname")}` : ""));
+    parts.push(`<span class="net">${SUBNET.lan}</span>`, plural(ns.length, "machine") + (hosts ? ` · ${plural(hosts, "hostname")}` : ""));
   }
   if (has("doks")) parts.push(plural(has("doks"), "kube cluster") + (e.stations.some((s) => s.site === st.id && s.kind === "lb") ? " · load balancer" : ""));
   if (has("droplet")) parts.push(plural(has("droplet"), "droplet"));
@@ -171,7 +181,10 @@ function build(e) {
   fp.textContent = ov.textContent = "";
   pos.clear(); els.clear(); lbs.clear(); cables.clear(); bbox.clear();
   const ingress = (sid) => e.stations.filter((s) => s.site === sid && s.tier === "ingress");
-  const compute = (sid) => [...e.nodes.filter((n) => n.site === sid).map((n) => ({ n })), ...e.stations.filter((s) => s.site === sid && s.tier === "compute").map((s) => ({ s }))];
+  // The Traefik VIP is not a machine: it gets its own band, out of the kube platform.
+  const vip = (sid) => e.stations.filter((s) => s.site === sid && s.kind === "vip");
+  const compute = (sid) => [...e.nodes.filter((n) => n.site === sid).map((n) => ({ n })), ...e.stations.filter((s) => s.site === sid && s.tier === "compute" && s.kind !== "vip").map((s) => ({ s }))];
+  const RH = ROW_H + 0.66, isKube = (n) => n.role === "server" || n.role === "agent";
   const service = (sid) => [...e.components.filter((c) => serviceSite(e, c) === sid).map((c) => ({ c })), ...e.stations.filter((s) => s.site === sid && s.tier === "service").map((s) => ({ s }))];
   const roomW = (sid, min) => Math.max(min, ingress(sid).length * 3, compute(sid).length * 3, service(sid).length * 3) + 1;
   const LEFT = 5, STREET_Y = -4;
@@ -187,28 +200,40 @@ function build(e) {
       const planned = sites.every((s) => s.planned);
       const roomH = planned ? ROW_H * 2 + 2 : ROW_H * 3 + 2;
       const bw = Math.max(...sites.map((s) => roomW(s.id, planned ? 4 : 6))) + PAD * 2;
-      const bh = sites.length * (roomH + PAD) + PAD;
+      const roomHOf = (s) => roomH + (vip(s.id).length ? RH : 0);
+      const bh = sites.reduce((a, s) => a + roomHOf(s) + PAD, PAD);
       const short = prov.name + (role === "edge" && e.sites.some((s) => s.provider === pid && s.role !== "edge") ? " edge" : "");
       bbox.set(bk, { x: bx, y: y0, w: bw, h: bh, name: prov.name + (role === "edge" ? " · CDN home proxy" : ""), short, planned });
       const b = div("bld" + provCls(pid) + (planned ? " planned" : ""), fp, { left: px(bx), top: px(y0), width: px(bw), height: px(bh) });
       div("front", b); div("frontr", b);
       let ry = y0 + PAD;
       for (const s of sites) {
-        const rw = bw - PAD * 2, rx = bx + PAD;
-        div("room" + (s.planned ? " planned" : ""), fp, { left: px(rx), top: px(ry), width: px(rw), height: px(roomH) });
-        (planned ? [1] : [1, 2]).forEach((k) => div("row", fp, { left: px(rx), width: px(rw), top: px(ry + k * (ROW_H + 0.66)) }));
-        pos.set("room:" + s.id, { x: rx + 0.6, y: ry + roomH / 2 });
-        const place = (key, i, rowIdx, w = 2, h = 2) => { const x = rx + 1 + i * 3, y = ry + 0.4 + rowIdx * (ROW_H + 0.66); pos.set(key, { x: x + w / 2, y: y + h / 2 }); return { left: px(x), top: px(y), width: px(w), height: px(h) }; };
+        const rw = bw - PAD * 2, rx = bx + PAD, rh = roomHOf(s), vb = vip(s.id).length ? 1 : 0;
+        div("room" + (s.planned ? " planned" : ""), fp, { left: px(rx), top: px(ry), width: px(rw), height: px(rh) });
+        (planned ? [1] : vb ? [1, 2, 3] : [1, 2]).forEach((k) => div("row", fp, { left: px(rx), width: px(rw), top: px(ry + k * RH) }));
+        pos.set("room:" + s.id, { x: rx + Math.min(rw * 0.45, 7), y: ry + rh / 2 });   // inset so long room labels stay in view
+        const place = (key, i, rowIdx, w = 2, h = 2) => { const x = rx + 1 + i * 3, y = ry + 0.4 + rowIdx * RH; pos.set(key, { x: x + w / 2, y: y + h / 2 }); return { left: px(x), top: px(y), width: px(w), height: px(h) }; };
         ingress(s.id).forEach((st, i) => els.set("st:" + st.id, div("tile st" + (st.planned ? " planned" : ""), fp, place("st:" + st.id, i, 0))));
-        compute(s.id).forEach((o, i) => {
+        // Kube platform under the k3s machines; the VIP rises out of it into its own band.
+        const cs = compute(s.id), kn = cs.map((o, i) => (o.n && isKube(o.n) ? i : -1)).filter((i) => i >= 0);
+        if (vb && kn.length) {
+          const x0 = rx + 1 + kn[0] * 3 - 0.5, x1 = rx + 1 + kn[kn.length - 1] * 3 + 2.5, ky = ry + RH, kh = 2.8, cx = (x0 + x1) / 2;
+          div("kube", fp, { left: px(x0), top: px(ky), width: px(x1 - x0), height: px(kh) });
+          pos.set("kube:" + s.id, { x: x0 + 0.6, y: ky + kh, n: kn.length });
+          const v = vip(s.id)[0], vy = ry + 0.4 + 2 * RH, vw = 5;
+          div("cable v k-vip", fp, { left: px(cx - 0.1), top: px(ky + kh), width: px(0.2), height: px(vy - ky - kh) });
+          els.set("st:" + v.id, div("tile st vip", fp, { left: px(cx - vw / 2), top: px(vy), width: px(vw), height: px(1.8) }));
+          pos.set("st:" + v.id, { x: cx, y: vy + 0.9 });
+        }
+        cs.forEach((o, i) => {
           if (o.n) { const r = div("rack", fp, place("n:" + o.n.id, i, 1)); r.innerHTML = "<i></i><i></i><i></i>"; els.set("n:" + o.n.id, r); }
           else els.set("st:" + o.s.id, div("tile st", fp, place("st:" + o.s.id, i, 1)));
         });
         service(s.id).forEach((o, i) => {
           const key = o.c ? "c:" + o.c.id : "st:" + o.s.id;
-          els.set(key, div("tile " + (o.c ? "svc" : "st"), fp, place(key, i, 2, 2, 1.4)));
+          els.set(key, div("tile " + (o.c ? "svc" : "st"), fp, place(key, i, 2 + vb, 2, 1.4)));
         });
-        ry += roomH + PAD;
+        ry += rh + PAD;
       }
       bx += bw + GAP; rowH = Math.max(rowH, bh);
     }
@@ -244,6 +269,18 @@ function build(e) {
     segs.push(div("cable v k-" + h.kind, fp, { left: px(b.x - 0.08), top: px(Math.min(a.y, b.y)), width: px(0.16), height: px(Math.abs(b.y - a.y)) }));
     cables.set(h.id, { segs, pts, len: Math.abs(b.x - a.x) + Math.abs(b.y - a.y), pkts: [] });
   }
+  // Return leg: replies from the VIP go back out through the MikroTik (drawn dashed, the other way round).
+  {
+    const v = pos.get("st:traefik"), r = pos.get("st:router");
+    if (v && r) {
+      const x = v.x - 3.2;
+      [[x, v.y, v.x - 2.5, v.y], [x, r.y, x, v.y], [x, r.y, r.x, r.y]].forEach(([x0, y0, x1, y1]) => {
+        const vert = x0 === x1;
+        div("cable k-route" + (vert ? " v" : ""), fp, vert ? { left: px(x0 - 0.05), top: px(Math.min(y0, y1)), width: px(0.1), height: px(Math.abs(y1 - y0)) }
+          : { left: px(Math.min(x0, x1)), top: px(y0 - 0.05), width: px(Math.abs(x1 - x0)), height: px(0.1) });
+      });
+    }
+  }
   for (const c of e.components) {
     const h = e.hops.find((x) => x.id === c.via[c.via.length - 1]);
     const a = h && pos.get("st:" + h.to), b = pos.get("c:" + c.id);
@@ -272,7 +309,10 @@ function build(e) {
       label("room:" + sid, "rm", "", () => zoomTo(bk), "rm", bk);
       for (const st of e.stations.filter((x) => x.site === sid && x.tier === "ingress")) label("st:" + st.id, "sign", "", () => select("st", st.id), "d", bk);
       for (const n of e.nodes.filter((x) => x.site === sid)) label("n:" + n.id, "", "", () => select("n", n.id), "d", bk);
-      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "compute")) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
+      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "compute" && x.kind !== "vip")) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
+      for (const st of e.stations.filter((x) => x.site === sid && x.kind === "vip")) label("st:" + st.id, "vip", "", () => select("st", st.id), "rm", bk);
+      const kp = pos.get("kube:" + sid);
+      if (kp) label("kube:" + sid, "kube-l", `<b>k3s</b> · ${kp.n} nodes`, () => zoomTo(bk), "d", bk);
       for (const c of e.components.filter((x) => serviceSite(e, x) === sid)) label("c:" + c.id, "", "", () => select("c", c.id), "d", bk);
       for (const st of e.stations.filter((x) => x.site === sid && x.tier === "service")) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
     }
@@ -350,7 +390,8 @@ function update(e) {
     const hs = e.hops.filter((h) => h.from === s.id || h.to === s.id);
     const worst = hs.some((h) => h.state === "down") ? "down" : hs.some((h) => h.state === "degraded") ? "degraded" : "up";
     const lat = Math.max(...hs.map((h) => h.latency_ms ?? 0));
-    l.className = `lb ${s.tier === "ingress" ? "sign " : ""}s-${s.planned ? "unknown" : worst}${!s.planned && worst !== "up" ? " alarm" : ""}`;
+    l.className = `lb ${s.tier === "ingress" ? "sign " : ""}${s.kind === "vip" ? "vip " : ""}s-${s.planned ? "unknown" : worst}${!s.planned && worst !== "up" ? " alarm" : ""}`;
+    if (s.kind === "vip") { l.innerHTML = `<b>Traefik VIP</b> <span class="net">${VIP_IP}</span> · pool <span class="net">${SUBNET.vip}</span>${lat ? " · " + fmtMs(lat) : ""}`; continue; }
     l.innerHTML = `<b>${esc(s.name)}</b>${s.planned ? " · Planned" : hs.length ? ` ${lat ? fmtMs(lat) : "—"}` : ""}${s.id === "verizon" && e.layout === "today" ? ' <span class="chip locked">Sign in to reveal</span>' : ""}${s.id === "pite" ? ` · ${fmtAge(e.home_age_s)}` : ""}`;
   }
   for (const c of e.components) {
