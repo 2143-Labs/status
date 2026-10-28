@@ -42,6 +42,7 @@
 /* Site-to-site WireGuard (DO ⇄ home): dashed purple, labelled on the link. */
 .cable.k-tunnel{background:repeating-linear-gradient(90deg,var(--info) 0 6px,transparent 6px 10px)}
 .cable.k-tunnel.v{background:repeating-linear-gradient(180deg,var(--info) 0 6px,transparent 6px 10px)}
+.cable.ts-link{display:none}.cable.ts-link.on{display:block;opacity:1}
 .legend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:var(--muted);margin:.2rem 0 .4rem}
 .legend i{position:static;display:inline-block;width:1.8em;height:3px;vertical-align:middle;margin-right:.4em}
 .legend i.kube{height:.8em;width:1.2em}
@@ -303,11 +304,12 @@ function build(e) {
   });
   for (const h of e.hops) {
     // Probe and report legs are the status page's own plumbing, not the estate's network: inspector only.
-    if (h.kind === "probe" || h.kind === "report" || h.from === "tailnet") continue;
+    if (h.kind === "probe" || h.kind === "report") continue;
     const a = pos.get("st:" + h.from), b = pos.get("st:" + h.to);
     if (!a || !b) continue;
-    const pts = [a, { x: b.x, y: a.y }, b];
-    const segs = wire("cable k-" + h.kind, pts);
+    // The tailnet's link up to Traefik would cross the services row, so it is drawn only while the tailnet is selected.
+    const pts = h.from === "tailnet" ? [a, { x: a.x - 1.5, y: a.y }, { x: a.x - 1.5, y: b.y }, b] : [a, { x: b.x, y: a.y }, b];
+    const segs = wire("cable k-" + h.kind + (h.from === "tailnet" ? " ts-link" : ""), pts);
     cables.set(h.id, { segs, pts, len: pts.slice(1).reduce((s, q, i) => s + Math.abs(q.x - pts[i].x) + Math.abs(q.y - pts[i].y), 0), pkts: [] });
   }
   for (const c of e.components) {
@@ -565,8 +567,13 @@ function clearSel() {
   if (k) lbs.get(k)?.focus({ preventScroll: true });
 }
 function highlight() {
-  $("#cam").classList.toggle("dim", !!sel && sel.t === "c");
+  $("#cam").classList.toggle("dim", !!sel && (sel.t === "c" || (sel.t === "st" && sel.id === "tailnet")));
   for (const el of [...els.values(), ...[...cables.values()].flatMap((c) => c.segs)]) el.classList.remove("on");
+  if (sel?.t === "st" && sel.id === "tailnet") {
+    for (const h of est.hops.filter((x) => x.from === "tailnet")) { cables.get(h.id)?.segs.forEach((s) => s.classList.add("on")); els.get("st:" + h.to)?.classList.add("on"); }
+    els.get("st:tailnet")?.classList.add("on");
+    return;
+  }
   if (!sel || sel.t !== "c") return;
   const c = est.components.find((x) => x.id === sel.id);
   els.get("c:" + c.id)?.classList.add("on");
@@ -589,7 +596,7 @@ function inspect() {
     const s = e.stations.find((x) => x.id === sel.id); if (!s) return clearSel();
     const hs = e.hops.filter((x) => x.from === s.id || x.to === s.id);
     const ids = new Set(hs.map((x) => x.id));
-    h = `<h2>${esc(s.name)}</h2><p>${esc(s.kind)} · ${esc(s.site || "between buildings")} · ${s.tier}${s.planned ? " · planned" : ""}</p>
+    h = `<h2>${esc(s.name)}</h2><p>${esc(s.kind)} · ${esc(s.site || "between buildings")} · ${s.tier}${s.planned ? " · planned" : ""}</p>${s.id === "tailnet" ? `<p>Control server <a href="https://net.2143.me">net.2143.me</a> is served by <b>Traefik</b> <span class="net">${VIP_IP}</span>. Tailnet clients reach Traefik directly for <span class="net">*.ts.2143.me</span>.</p>` : ""}
       <table><tbody>${hs.map((x) => `<tr><td>${x.from === s.id ? "→ " + esc(x.to) : "← " + esc(x.from)}</td><td>${esc(x.label)}</td><td>${fmtMs(x.latency_ms)}</td><td><span class="st st-${sk(x.state)}">${stateWord(x.state)}</span></td></tr>`).join("") || "<tr><td>No links yet</td></tr>"}</tbody></table>
       <p>Routes: ${e.components.filter((c) => c.via.some((v) => ids.has(v))).map((c) => esc(c.name)).join(", ") || "—"}</p>${hs[0] ? `<p><a href="#row-hop-${esc(hs[0].id)}">Show in table</a></p>` : ""}`;
   } else if (sel.t === "x") {
