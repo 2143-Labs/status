@@ -15,7 +15,11 @@
 .view{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
 .cam{position:relative;transform-origin:0 0;transition:transform .4s ease}
 /* The 2D isometric floor plan: carries no text. */
-.floorplan{position:absolute;left:0;top:0;transform-origin:0 0;transform:matrix(.866,.5,-.866,.5,0,0)}
+.floorplan{position:absolute;left:0;top:0;transform-origin:0 0;transform:matrix(.866,.5,-.866,.5,0,0);transition:transform .4s ease}
+/* Zoomed in, the plan lies flat (top-down) so rows and tiles read as a straight floor plan. */
+.floorplan.flat{transform:none}
+.floorplan.flat .bld .front,.floorplan.flat .bld .frontr{display:none}
+.ov{transition:opacity .15s ease}.ov.moving{opacity:0}
 .street{position:absolute;background:repeating-linear-gradient(90deg,var(--panel) 0 18px,var(--code) 18px 36px);border:1px solid var(--line)}
 .bld{position:absolute;border:2px solid var(--fg);background:var(--panel)}
 .bld .front{position:absolute;left:0;right:0;bottom:-2px;height:0;box-shadow:0 10px 0 0 color-mix(in srgb,var(--fg) 45%,var(--bg))}
@@ -92,7 +96,7 @@
 .days i{background:var(--ok)}.days i.m{background:var(--warn)}.days i.x{background:var(--bad)}
 .moved{color:var(--info)}
 @media (max-width:1000px){.wrap{grid-template-columns:1fr}.insp{position:static;max-height:none}}
-@media (prefers-reduced-motion:reduce){.cam{transition:none}.pkt{display:none}}
+@media (prefers-reduced-motion:reduce){.cam,.floorplan{transition:none}.pkt{display:none}}
 </style>
 </head>
 <body>
@@ -159,7 +163,10 @@ const cables = new Map();              // hop id -> {segs, pts, len, pkts}
 const bbox = new Map();                // provider id -> {x,y,w,h}
 const prevNode = new Map(), movedFrom = new Map();
 
-const project = (x, y) => ({ x: OX + 0.866 * (x - y) * U, y: OY + 0.5 * (x + y) * U });
+// Zoomed out: isometric. Zoomed into a building: flat top-down (?flat=0 keeps iso when zoomed, for comparison).
+const FLAT_ZOOM = new URLSearchParams(location.search).get("flat") !== "0";
+let flat = false;
+const project = (x, y) => (flat ? { x: OX + x * U, y: OY + y * U } : { x: OX + 0.866 * (x - y) * U, y: OY + 0.5 * (x + y) * U });
 const div = (cls, parent, st) => { const d = document.createElement("div"); d.className = cls; Object.assign(d.style, st || {}); parent.append(d); return d; };
 const px = (t) => t * U + "px";
 
@@ -291,11 +298,11 @@ function build(e) {
   }
   // Labels carry a level: building (b) and room (rm) always show; detail (d) shows when its
   // building is zoomed, or anywhere when that thing is not up. Outside stations (o) always show.
+  // Each keeps its plan-space key so reanchor() can re-project it when the view goes flat or iso.
   const label = (key, cls, html, on, lvl, bk) => {
-    const p = pos.get(key); if (!p) return;
-    const q = project(p.x, p.y);
+    if (!pos.get(key)) return;
     const l = document.createElement("button"); l.type = "button"; l.className = "lb " + cls;
-    l.style.left = q.x + "px"; l.style.top = q.y + "px"; l.innerHTML = html; l.bx = q.x; l.by = q.y;
+    l.innerHTML = html; l.pk = key;
     l.dataset.lvl = lvl; l.dataset.bk = bk || "";
     l.addEventListener("click", on); ov.append(l); lbs.set(key, l);
   };
@@ -318,6 +325,7 @@ function build(e) {
     }
   }
   for (const id of ["internet", "tailnet", "wg"]) label("st:" + id, id === "internet" ? "sign" : "", "", () => select("st", id), "o", "");
+  reanchor();
 }
 
 // Level of detail: which labels are visible (and tabbable) right now.
@@ -342,13 +350,27 @@ function fit() {
 function applyCam() {
   const base = +cam.dataset.base || 1;
   if (!zoom || !bbox.get(zoom)) { cam.style.transform = `scale(${base})`; cam.style.setProperty("--inv", 1 / base); return; }
-  const bb = bbox.get(zoom), c = project(bb.x + bb.w / 2, bb.y + bb.h / 2);
-  const s = base * 1.8, vw = $("#view").clientWidth, vh = $("#view").clientHeight;
-  cam.style.transform = `translate(${vw / 2 - c.x * s}px, ${vh / 2 - c.y * s}px) scale(${s})`;
+  const bb = bbox.get(zoom), vw = $("#view").clientWidth, vh = $("#view").clientHeight;
+  // Fit the zoomed building's projected box into the view, with a margin for labels.
+  const cs = [[bb.x, bb.y], [bb.x + bb.w, bb.y], [bb.x, bb.y + bb.h], [bb.x + bb.w, bb.y + bb.h]].map(([x, y]) => project(x, y));
+  const x0 = Math.min(...cs.map((c) => c.x)), x1 = Math.max(...cs.map((c) => c.x)), y0 = Math.min(...cs.map((c) => c.y)), y1 = Math.max(...cs.map((c) => c.y));
+  const s = Math.min((vw * 0.92) / (x1 - x0), (vh * 0.88) / (y1 - y0), flat ? 2.2 : base * 1.8);
+  cam.style.transform = `translate(${vw / 2 - ((x0 + x1) / 2) * s}px, ${vh / 2 - ((y0 + y1) / 2) * s}px) scale(${s})`;
   cam.style.setProperty("--inv", 1 / s);
 }
+// Put every label back on its anchor for the current projection.
+function reanchor() {
+  for (const l of lbs.values()) { const p = pos.get(l.pk); if (!p) continue; const q = project(p.x, p.y); l.bx = q.x; l.by = q.y; l.style.left = q.x + "px"; l.style.top = q.y + "px"; }
+}
 function zoomTo(pid) {
-  zoom = pid; applyCam(); crumb(); lod(); declutter();
+  zoom = pid;
+  const nf = FLAT_ZOOM && !!pid;
+  if (nf !== flat) {
+    flat = nf; fp.classList.toggle("flat", flat);
+    // Hide labels while the plan swings between iso and flat; they reappear on their new anchors.
+    if (!reduce.matches) { ov.classList.add("moving"); clearTimeout(zoomTo.t); zoomTo.t = setTimeout(() => ov.classList.remove("moving"), 420); }
+  }
+  reanchor(); applyCam(); crumb(); lod(); declutter();
   if (pid) lbs.get("b:" + pid)?.focus({ preventScroll: true });
 }
 function crumb() {
@@ -434,12 +456,20 @@ function update(e) {
 // from its anchor (so it stays next to what it names), plus a heavy charge for leaving the view.
 // Labels never overlap each other.
 function declutter() {
-  // Labels are counter-scaled by --inv, so in overlay coordinates each is offsetSize × --inv.
-  const inv = parseFloat(cam.style.getPropertyValue("--inv")) || 1, o0 = ov.getBoundingClientRect(), G = 3 * inv;
-  const rect = (r, k = 1) => { const w = r.width * inv * k, h = r.height * inv * k, cx = (r.left + r.width / 2 - o0.left) * inv, cy = (r.top + r.height / 2 - o0.top) * inv; return { x: cx - w / 2, y: cy - h / 2, w, h }; };
-  const V = rect($("#view").getBoundingClientRect());
-  // Iso tiles are diamonds; their inner 60% stands in for the shape. The k3s platform is a band: use half.
-  const obst = [...fp.querySelectorAll(".rack,.tile,.kube")].filter((d) => d.offsetParent).map((d) => rect(d.getBoundingClientRect(), d.classList.contains("kube") ? 0.5 : 0.6));
+  // Everything here is computed from plan-space positions and the camera's target transform, not from
+  // on-screen rects, so the result is the same whether or not a zoom animation is still running.
+  const inv = parseFloat(cam.style.getPropertyValue("--inv")) || 1, G = 3 * inv;
+  const m = /translate\(([-\d.e]+)px,\s*([-\d.e]+)px\)/.exec(cam.style.transform), tx = m ? +m[1] : 0, ty = m ? +m[2] : 0;
+  const V = { x: -tx * inv, y: -ty * inv, w: $("#view").clientWidth * inv, h: $("#view").clientHeight * inv };
+  // An obstacle is the projected box of a drawn thing; in iso a tile is a diamond, so its inner 60% stands in.
+  const k = flat ? 1 : 0.6;
+  const box = (x, y, w, h, kk = k) => {
+    const cs = [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].map(([a, b]) => project(a, b));
+    const x0 = Math.min(...cs.map((c) => c.x)), x1 = Math.max(...cs.map((c) => c.x)), y0 = Math.min(...cs.map((c) => c.y)), y1 = Math.max(...cs.map((c) => c.y));
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, bw = (x1 - x0) * kk, bh = (y1 - y0) * kk;
+    return { x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh };
+  };
+  const obst = [...fp.querySelectorAll(".rack,.tile,.kube")].map((d) => box(parseFloat(d.style.left) / U, parseFloat(d.style.top) / U, parseFloat(d.style.width) / U, parseFloat(d.style.height) / U, d.classList.contains("kube") ? k * 0.85 : k));
   const rank = (l) => (l.classList.contains("bl") ? 0 : l.dataset.lvl === "rm" ? 1 : l.dataset.lvl === "o" ? 2 : 3);
   const all = [...lbs.values()].filter((l) => l.bx != null && !l.hidden).sort((a, b) => rank(a) - rank(b) || a.by - b.by || a.bx - b.bx);
   const cover = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) + G) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) + G);
