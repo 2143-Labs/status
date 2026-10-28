@@ -76,6 +76,8 @@
 .tile.st.ts{border:2px solid var(--info);border-radius:50%;background:color-mix(in srgb,var(--info) 18%,var(--bg))}
 .room.ts-room{border-color:var(--info);border-style:dashed}
 .tile.xn{border-radius:50%;border:2px solid var(--ok);background:color-mix(in srgb,var(--ok) 14%,var(--bg))}
+.lb.ts-l b{color:var(--info)}
+.ts-strip{position:absolute;border:1.5px dashed var(--info);border-radius:6px;background:color-mix(in srgb,var(--info) 5%,transparent)}
 .tile.dp{border:2px dashed var(--info);border-radius:3px;transform:rotate(45deg) scale(.8);background:color-mix(in srgb,var(--info) 12%,var(--bg))}
 .tile.dp.s-down,.tile.dp.s-unknown{border-color:var(--bad);background:var(--panel)}
 .tile.xn.s-down,.tile.xn.s-unknown{border-color:var(--bad);background:var(--panel)}
@@ -172,14 +174,17 @@ const prevNode = new Map(), movedFrom = new Map();
 const FLAT_ZOOM = new URLSearchParams(location.search).get("flat") !== "0";
 // Tailscale exit nodes, from `tailscale exit-node list` on 2026-10-28. Offline nodes are not usable, so not listed.
 // The estate feed has no tailnet data yet; status here is fixed until pite reports `tailscale status --json`.
-// DERP relays, from `tailscale debug derp-map` + `tailscale netcheck` on 2026-10-28. Fixed until pite reports netcheck.
+// DERP relays, from `tailscale debug derp-map` + `tailscale netcheck` on 2026-10-28, and /derp/probe (both 200).
+// Fixed until pite reports netcheck. `site` is the room it is drawn in; `at` is the station it runs behind.
+// derp-r answers /derp/probe but not STUN, so clients cannot measure it: up, latency unmeasured.
 const DERP = [
-  { id: "embedded", name: "Embedded DERP", where: "headscale at Home, behind Traefik", at: "traefik", state: "up", ms: 4.4 },
-  { id: "derp-r", name: "derp-r", where: "DOKS, DigitalOcean nyc1", at: "doks", state: "down", note: "no reply to netcheck" },
+  { id: "embedded", name: "Embedded DERP", where: "headscale in the home k3s cluster, behind Traefik", site: "house", at: "traefik", state: "up", ms: 4.4 },
+  { id: "derp-r", name: "derp-r", where: "DOKS, DigitalOcean nyc1", site: "nyc1", at: "doks", state: "up", note: "relays; STUN gets no reply, so latency is not measured" },
 ];
+// Exit nodes; `site` set = it runs in that room, null = a third party (Mullvad), drawn in the Tailscale room.
 const EXIT_NODES = [
-  { id: "nas", name: "nas", where: "Home", state: "up" },
-  { id: "doks-us-nyc", name: "doks-us-nyc", where: "DigitalOcean nyc1", state: "up" },
+  { id: "nas", name: "nas", where: "Home", site: "house", state: "up" },
+  { id: "doks-us-nyc", name: "doks-us-nyc", where: "DOKS, DigitalOcean nyc1", site: "nyc1", state: "up" },
   { id: "mullvad-us", name: "Mullvad US", where: "mullvad-us-vpin-deccam", state: "up" },
   { id: "mullvad-de", name: "Mullvad DE", where: "Düsseldorf", state: "up" },
   { id: "mullvad-ee", name: "Mullvad EE", where: "Tallinn", state: "up" },
@@ -217,6 +222,9 @@ function build(e) {
   const service = (sid) => [...e.components.filter((c) => serviceSite(e, c) === sid).map((c) => ({ c })), ...e.stations.filter((s) => s.site === sid && s.tier === "service" && !alias(s)).map((s) => ({ s }))];
   // A room with nothing in its service row lays out on one row: ingress, then its machines beside it.
   const compact = (s) => !s.planned && !vip(s.id).length && !service(s.id).length;
+  // Tailscale things that run in a room (an exit node on nas, a relay in DOKS) get a row of their own there.
+  const tsIn = (sid) => [...DERP.filter((x) => x.site === sid).map((x) => ({ k: "dp:" + x.id, cls: "dp" })), ...EXIT_NODES.filter((x) => x.site === sid).map((x) => ({ k: "x:" + x.id, cls: "xn" }))];
+  const TS_RH = RH + 1.4;   // a Tailscale row: tiles plus two rows of labels under them
   const roomW = (sid, min) => { const s = e.sites.find((x) => x.id === sid); return Math.max(min, compact(s) ? (ingress(sid).length + compute(sid).length) * 3 : Math.max(ingress(sid).length, compute(sid).length, service(sid).length) * 3) + 1; };
   const LEFT = 5, STREET_Y = -4;
   let y0 = 0, maxX = 0;
@@ -231,9 +239,9 @@ function build(e) {
       const planned = sites.every((s) => s.planned);
       const roomH = planned ? ROW_H * 2 + 2 : ROW_H * 3 + 2;
       const tsHere = bk === "home:origin" && e.stations.some((x) => x.id === "tailnet");
-      const bw = Math.max(...sites.map((s) => roomW(s.id, planned ? 4 : 6)), tsHere ? (EXIT_NODES.length + DERP.length + 1) * 3 + 2 : 0) + PAD * 2;
-      const roomHOf = (s) => (compact(s) ? RH + 0.6 : roomH + (vip(s.id).length ? RH : 0));
-      const bh = sites.reduce((a, s) => a + roomHOf(s) + PAD, PAD) + (tsHere ? RH + 0.6 + PAD : 0);
+      const bw = Math.max(...sites.map((s) => roomW(s.id, planned ? 4 : 6)), tsHere ? (EXIT_NODES.filter((x) => !x.site).length + 1) * 3 + 1 : 0) + PAD * 2;
+      const roomHOf = (s) => (compact(s) ? RH + 0.6 : roomH + (vip(s.id).length ? RH : 0)) + (tsIn(s.id).length ? TS_RH : 0);
+      const bh = sites.reduce((a, s) => a + roomHOf(s) + PAD, PAD) + (tsHere ? TS_RH + 0.6 + PAD : 0);
       const short = prov.name + (role === "edge" && e.sites.some((s) => s.provider === pid && s.role !== "edge") ? " edge" : "");
       bbox.set(bk, { x: bx, y: y0, w: bw, h: bh, name: prov.name + (role === "edge" ? " · CDN home proxy" : ""), short, planned });
       const b = div("bld" + provCls(pid) + (planned ? " planned" : ""), fp, { left: px(bx), top: px(y0), width: px(bw), height: px(bh) });
@@ -271,17 +279,24 @@ function build(e) {
           const key = o.c ? "c:" + o.c.id : "st:" + o.s.id;
           els.set(key, div("tile " + (o.c ? "svc" : "st"), fp, put(key, i, ySvc, 2, 1.4)));
         });
+        // Bottom row: this room's Tailscale relays and exit nodes, in a dashed Tailscale strip.
+        const ti = tsIn(s.id);
+        if (ti.length) {
+          const yTs = ry + rh - TS_RH;
+          div("row", fp, { left: px(rx), width: px(rw), top: px(yTs) });
+          div("ts-strip", fp, { left: px(rx + 0.5), top: px(yTs + 0.2), width: px(rw - 1), height: px(TS_RH - 0.4) });
+          pos.set("tsl:" + s.id, { x: rx + ti.length * 3 + 3.2, y: yTs + 1.2 });
+          ti.forEach((o, i) => els.set(o.k, div("tile " + o.cls, fp, put(o.k, i, yTs))));
+        }
         ry += rh + PAD;
       }
       // Tailscale is its own network, so it gets its own room: the tailnet, then every usable exit node.
       if (tsHere) {
-        const rw = bw - PAD * 2, rx = bx + PAD, rh = RH + 0.6;
+        const rw = bw - PAD * 2, rx = bx + PAD, rh = TS_RH + 0.6;
         div("room ts-room", fp, { left: px(rx), top: px(ry), width: px(rw), height: px(rh) });
         const put = (key, i) => { const x = rx + 1 + i * 3; pos.set(key, { x: x + 1, y: ry + 1.4 }); return { left: px(x), top: px(ry + 0.4), width: px(2), height: px(2) }; };
         els.set("st:tailnet", div("tile st ts", fp, put("st:tailnet", 0)));
-        EXIT_NODES.forEach((x, i) => els.set("x:" + x.id, div("tile xn", fp, put("x:" + x.id, i + 1))));
-        // Relays follow the exit nodes, after a gap; each is drawn here but wired to where it actually runs.
-        DERP.forEach((x, i) => { const st = put("dp:" + x.id, EXIT_NODES.length + 1 + i); st.left = px(parseFloat(st.left) / U + 1); pos.get("dp:" + x.id).x += 1; els.set("dp:" + x.id, div("tile dp", fp, st)); });
+        EXIT_NODES.filter((x) => !x.site).forEach((x, i) => els.set("x:" + x.id, div("tile xn", fp, put("x:" + x.id, i + 1))));
         pos.set("room:tailscale", { x: rx + rw - 6, y: ry + 0.5 });
       }
       bx += bw + GAP; rowH = Math.max(rowH, bh);
@@ -365,9 +380,10 @@ function build(e) {
   for (const id of ["internet", "wg"]) label("st:" + id, id === "internet" ? "sign" : "", "", () => select("st", id), "o", "");
   if (pos.get("st:tailnet")) {
     label("st:tailnet", "sign", "", () => select("st", "tailnet"), "d", "home:origin");
-    label("room:tailscale", "rm", "<b>Tailscale</b> · exit nodes · DERP relays", () => zoomTo("home:origin"), "rm", "home:origin");
-    for (const x of DERP) label("dp:" + x.id, "", "", () => select("dp", x.id), "d", "home:origin");
-    for (const x of EXIT_NODES) label("x:" + x.id, "", "", () => select("x", x.id), "d", "home:origin");
+    for (const sid of SITE_ORDER) if (pos.get("tsl:" + sid)) label("tsl:" + sid, "rm ts-l", "<b>Tailscale</b> · runs here", () => select("st", "tailnet"), "d", bkOf(e.sites.find((y) => y.id === sid)));
+    label("room:tailscale", "rm", "<b>Tailscale</b> · tailnet and third-party exit nodes", () => zoomTo("home:origin"), "rm", "home:origin");
+    for (const x of DERP) label("dp:" + x.id, "", "", () => select("dp", x.id), "d", bkOf(e.sites.find((y) => y.id === x.site)));
+    for (const x of EXIT_NODES) label("x:" + x.id, "", "", () => select("x", x.id), "d", x.site ? bkOf(e.sites.find((y) => y.id === x.site)) : "home:origin");
   }
   reanchor();
 }
@@ -597,6 +613,7 @@ function highlight() {
     const on = (k) => cables.get(k)?.segs.forEach((s) => s.classList.add("on"));
     if (ts) { for (const h of est.hops.filter((x) => x.from === "tailnet")) { on(h.id); els.get("st:" + h.to)?.classList.add("on"); } on("ts:inet"); els.get("st:tailnet")?.classList.add("on"); }
     for (const x of ts ? DERP : [dp]) { on("dp:" + x.id); els.get("dp:" + x.id)?.classList.add("on"); els.get("st:" + x.at)?.classList.add("on"); }
+    if (ts) for (const x of EXIT_NODES) els.get("x:" + x.id)?.classList.add("on");
     return;
   }
   if (!sel || sel.t !== "c") return;
