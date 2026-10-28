@@ -32,9 +32,10 @@
 .band.planned{border-style:dotted;background:transparent}
 .band>span{position:absolute;left:.6rem;top:.3rem;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .card{position:absolute;z-index:2;width:176px;contain:layout paint;font:inherit;text-align:left;color:inherit;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:.35rem .5rem;cursor:pointer}
+.card.k-st{min-height:58px}
 .card.planned{border-style:dashed;opacity:.6;background:transparent}
 .card .nm{display:block;font-weight:600;font-size:.82rem;line-height:1.2}
-.card .sub{display:block;font-size:.72rem;color:var(--muted)}
+.card .sub{display:block;font-size:.72rem;color:var(--muted)}.card .bw{white-space:nowrap}
 .card .badge{position:absolute;bottom:-.6rem;right:.35rem;font-size:.68rem;padding:0 .35rem;border-radius:999px;background:var(--bg);border:1px solid var(--line)}
 .card.k-svc{background:var(--bg);width:200px}
 .card .list{display:flex;flex-direction:column;font-size:.72rem;line-height:1.35;margin-top:.1rem}
@@ -80,7 +81,7 @@
 <section id="plain" class="plain" aria-labelledby="plain-h"><h2 id="plain-h">All data as tables</h2></section>
 <noscript><p>This view needs JavaScript. <a href="live-normal.html">Plain status page</a>.</p></noscript>
 <script type="module">
-import { start, renderPlain, scenarioBar, mountModes, stateWord, fmtMs, fmtAge, esc } from "./estate-core.js";
+import { start, renderPlain, scenarioBar, mountModes, stateWord, fmtMs, fmtAge, fmtBytes, esc } from "./estate-core.js";
 
 const $ = (s) => document.querySelector(s);
 const stage = $("#stage"), plain = $("#plain"), vp = $("#vp"), world = $("#world"), insp = $("#insp");
@@ -89,6 +90,7 @@ scenarioBar($("#scenario-bar"));
 const reduce = matchMedia("(prefers-reduced-motion: reduce)");
 const sk = (s) => (["up", "degraded", "down"].includes(s) ? s : "unknown");
 const badge = (s) => `<span class="st st-${sk(s)}">${stateWord(s)}</span>`;
+const rate = (n) => (n == null ? "—" : fmtBytes(n) + "/s");
 
 const W = 176, H = 58, COLW = 236, ROWH = 84, PADX = 40, PADY = 40, BANDGAP = 30;
 let est = null, built = "", sel = null, routeSel = null;
@@ -180,18 +182,44 @@ function build(e) {
     b.addEventListener("click", (ev) => { ev.stopPropagation(); n.kind === "sh" ? select("sh", n.ref.id) : select("st", n.ref.id); });
     world.append(b); boxes.set(k, { ...p, el: b, n });
   }
-  // Orthogonal routing: out of the right edge, across at mid-gap, into the left edge. Same-column
-  // edges (observers) go straight across.
+  // Orthogonal routing, one private track per edge. Every card side spreads its ports by the far end's
+  // height; every column gap gives each edge crossing it its own vertical x. Same-column (observer)
+  // edges detour to the right, one lane each.
+  const colOf = (p) => Math.round((p.x - PADX) / COLW);
+  const mid = (k) => { const p = L.pos.get(k); return p.y + p.h / 2; };
+  const push = (m, id, v) => (m.get(id) || m.set(id, []).get(id)).push(v);
+  const sides = new Map(), gaps = new Map(), routes = [];
   for (const x of L.E) {
     const A = L.pos.get(x.a), B = L.pos.get(x.b); if (!A || !B) continue;
-    let pts;
-    const ay = A.y + A.h / 2, by = B.y + Math.min(B.h, H) / 2;
-    if (Math.abs(A.x - B.x) < 2) pts = [{ x: A.x + W, y: ay }, { x: A.x + W + 26, y: ay }, { x: B.x + W + 26, y: by }, { x: B.x + W, y: by }];
-    else {
-      const fwd = B.x > A.x, ax = fwd ? A.x + W : A.x, bx = fwd ? B.x : B.x + W;
-      const mx = fwd ? bx - 30 : ax - 30;
-      pts = [{ x: ax, y: ay }, { x: mx, y: ay }, { x: mx, y: by }, { x: bx, y: by }];
+    const self = Math.abs(A.x - B.x) < 2, fwd = B.x > A.x;
+    const r = { x, A, self, ax: self || fwd ? A.x + W : A.x, bx: self || !fwd ? B.x + W : B.x };
+    push(sides, x.a + (self || fwd ? ">" : "<"), { r, k: x.a, out: true, far: mid(x.b) });
+    push(sides, x.b + (self || !fwd ? ">" : "<"), { r, k: x.b, out: false, far: mid(x.a) });
+    push(gaps, self ? "self:" + colOf(A) : colOf(fwd ? B : A), r);
+    routes.push(r);
+  }
+  for (const ps of sides.values()) {
+    const p = L.pos.get(ps[0].k), hn = ps.some((s) => s.out) ? p.h : Math.min(p.h, H);
+    ps.sort((s, t) => s.far - t.far).forEach((s, i) => (s.r[s.out ? "ay" : "by"] = p.y + (hn * (i + 1)) / (ps.length + 1)));
+  }
+  const GAP = COLW - W;
+  for (const [g, rs] of gaps) {
+    rs.sort((p, q) => p.ay + p.by - q.ay - q.by);
+    const n = rs.length, step = Math.max(4, GAP / (n + 1));   // past 14 lanes the outer ones spill into the column padding
+    rs.forEach((r, i) => (r.mx = r.self ? r.A.x + W + 8 + i * 6 : PADX + (g - 1) * COLW + W + GAP / 2 + (i - (n - 1) / 2) * step));
+  }
+  // A long edge can still run level with a short one that lands in a gap it crosses; drop the shorter run 3 px.
+  const runs = routes.flatMap((r) => [[r, "ay", r.ax], [r, "by", r.bx]].map(([r, k, x]) => ({ r, k, l: Math.min(x, r.mx), w: Math.abs(x - r.mx) })));
+  for (let pass = 0, hit = true; hit && pass < 4; pass++) {
+    hit = false;
+    for (let i = 0; i < runs.length; i++) for (let j = i + 1; j < runs.length; j++) {
+      const p = runs[i], q = runs[j];
+      if (p.r === q.r || Math.abs(p.r[p.k] - q.r[q.k]) >= 1 || Math.min(p.l + p.w, q.l + q.w) <= Math.max(p.l, q.l)) continue;
+      const s = p.w < q.w ? p : q; s.r[s.k] += 3; hit = true;
     }
+  }
+  for (const { x, ax, ay, bx, by, mx } of routes) {
+    const pts = [{ x: ax, y: ay }, { x: mx, y: ay }, { x: mx, y: by }, { x: bx, y: by }];
     const segs = [];
     for (let i = 0; i < pts.length - 1; i++) {
       const p = pts[i], q = pts[i + 1], v = Math.abs(p.x - q.x) < 0.5;
@@ -262,7 +290,8 @@ function update(e) {
       const worst = hs.some((h) => h.state === "down") ? "down" : hs.some((h) => h.state === "degraded") ? "degraded" : hs.length ? "up" : "unknown";
       el.className = `card k-st s-${s.planned ? "unknown" : worst}` + (s.planned ? " planned" : "") + (el.classList.contains("on") ? " on" : "");
       el.querySelector(".nm").textContent = s.name;
-      el.querySelector(".sub").innerHTML = `${esc(s.kind)}${s.site ? " · " + esc(e.sites.find((x) => x.id === s.site)?.name || s.site) : ""}${s.planned ? " · planned" : ""}${s.id === "verizon" && e.layout === "today" ? ' · <span class="chip locked">Sign in to reveal</span>' : ""}${s.id === "pite" ? " · " + fmtAge(e.home_age_s) : ""}`;
+      const nd = e.nodes?.find((x) => x.id === s.id), bw = nd && (nd.net_rx_bps ?? 0) + (nd.net_tx_bps ?? 0) > 0;
+      el.querySelector(".sub").innerHTML = `${esc(s.kind)}${s.site ? " · " + esc(e.sites.find((x) => x.id === s.site)?.name || s.site) : ""}${s.planned ? " · planned" : ""}${s.id === "verizon" && e.layout === "today" ? ' · <span class="chip locked">Sign in to reveal</span>' : ""}${s.id === "pite" ? " · " + fmtAge(e.home_age_s) : ""}${bw ? ` · <span class="bw">↓${rate(nd.net_rx_bps)} ↑${rate(nd.net_tx_bps)}</span>` : ""}`;
       const bd = el.querySelector(".badge");
       const hostCount = routed.filter((r) => r.kind === "request").reduce((a, r) => a + r.hosts.length, 0);
       bd.hidden = !hostCount; bd.textContent = `${hostCount} host${hostCount === 1 ? "" : "s"}`;
