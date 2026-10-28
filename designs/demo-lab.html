@@ -39,8 +39,11 @@
 .rack.s-degraded{border-color:var(--warn);border-width:2px}.rack.s-down{border-color:var(--bad);border-width:2px}
 .cable{position:absolute;background:var(--fg);opacity:.7;contain:layout paint}
 .cable.k-public{background:var(--accent);opacity:.9}
-.cable.k-tunnel{background:repeating-linear-gradient(90deg,var(--ok) 0 6px,transparent 6px 10px)}
-.cable.k-tunnel.v{background:repeating-linear-gradient(180deg,var(--ok) 0 6px,transparent 6px 10px)}
+/* Site-to-site WireGuard (DO ⇄ home) is its own colour, so it never reads as the tailnet lane. */
+.cable.k-tunnel{background:repeating-linear-gradient(90deg,var(--info) 0 6px,transparent 6px 10px)}
+.cable.k-tunnel.v{background:repeating-linear-gradient(180deg,var(--info) 0 6px,transparent 6px 10px)}
+.cable.k-tunnel.ln-tailnet{background:repeating-linear-gradient(90deg,var(--ok) 0 6px,transparent 6px 10px)}
+.cable.k-tunnel.ln-tailnet.v{background:repeating-linear-gradient(180deg,var(--ok) 0 6px,transparent 6px 10px)}
 .cable.k-probe,.cable.k-report{background:repeating-linear-gradient(90deg,var(--muted) 0 2px,transparent 2px 6px);opacity:.8}
 .cable.k-probe.v,.cable.k-report.v{background:repeating-linear-gradient(180deg,var(--muted) 0 2px,transparent 2px 6px)}
 .cable.c-degraded{background:var(--warn)!important;opacity:1}.cable.c-down{background:var(--bad)!important;opacity:1}
@@ -49,10 +52,10 @@
 /* Flat overlay: labels are untransformed buttons and the Tab order. */
 .ov{position:absolute;inset:0;pointer-events:none}
 .ov>*{pointer-events:auto}
-.lb{position:absolute;transform:translate(-50%,-50%) scale(var(--inv,1));font:inherit;font-size:.72rem;line-height:1.2;text-align:center;white-space:nowrap;
+.lb{position:absolute;transform-origin:0 0;transform:scale(var(--inv,1)) translate(-50%,-50%);font:inherit;font-size:.72rem;line-height:1.2;text-align:center;white-space:nowrap;
   border:1px solid var(--line);border-radius:5px;background:color-mix(in srgb,var(--bg) 88%,transparent);color:var(--fg);padding:.05rem .3rem;cursor:pointer}
 .lb b{font-weight:600}
-.lb.bl{font-size:1.15rem;font-weight:800;letter-spacing:.01em;padding:.15rem .55rem;border-width:2px;border-color:var(--fg);background:var(--bg);box-shadow:3px 3px 0 color-mix(in srgb,var(--fg) 30%,var(--bg));z-index:2;transform:translate(-50%,-100%) scale(var(--inv,1))}
+.lb.bl{font-size:1.15rem;font-weight:800;letter-spacing:.01em;padding:.15rem .55rem;border-width:2px;border-color:var(--fg);background:var(--bg);box-shadow:3px 3px 0 color-mix(in srgb,var(--fg) 30%,var(--bg));z-index:2;transform:scale(var(--inv,1)) translate(-50%,-100%)}
 .lb.planned{color:var(--muted);font-weight:400;border-color:var(--line)}
 .lb.bl.planned{font-size:.85rem;font-weight:500;border-width:1px;box-shadow:none;background:color-mix(in srgb,var(--bg) 88%,transparent)}
 .lb.rm{font-size:.72rem;color:var(--muted)}
@@ -67,6 +70,20 @@
 .lb.vip{font-weight:600;border-color:var(--accent);color:var(--fg)}
 .lb.kube-l{color:var(--accent);border-color:var(--accent)}
 .net{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.95em;color:var(--fg)}
+/* Lanes: one bus per network. Tailnet green dashed, k3s control plane solid blue, k3s cluster blue dashed, plain LAN neutral. */
+.ln{position:absolute;height:3px;margin-top:-1.5px;opacity:.9}
+.ln.v{width:2px;height:auto;margin:0}
+.ln-tailnet{background:repeating-linear-gradient(90deg,var(--ok) 0 6px,transparent 6px 10px)}
+.ln-tailnet.v{background:repeating-linear-gradient(180deg,var(--ok) 0 4px,transparent 4px 7px)}
+.ln-ctrl{background:var(--accent)}
+.ln-cluster{background:repeating-linear-gradient(90deg,var(--accent) 0 5px,transparent 5px 9px)}
+.ln-cluster.v{background:repeating-linear-gradient(180deg,var(--accent) 0 4px,transparent 4px 7px)}
+.ln-lan{background:color-mix(in srgb,var(--fg) 55%,var(--bg))}
+.cable.on-lane{opacity:.95}
+.tile.st.ts{border:2px solid var(--ok);border-radius:50%;background:color-mix(in srgb,var(--ok) 20%,var(--bg))}
+.lb.lane{font-size:.66rem;border-color:transparent;background:color-mix(in srgb,var(--bg) 92%,transparent);text-align:left;transform:scale(var(--inv,1)) translate(0,-100%);padding:0 .25rem}
+.lb.lane i{font-style:normal;display:inline-block;width:1.4em;height:3px;vertical-align:middle;margin-right:.3em}
+.lb.lane-tailnet{color:var(--ok)}.lb.lane-ctrl,.lb.lane-cluster{color:var(--accent)}
 /* Provider identity colours. Chosen in OKLCH: one lightness per mode (ink L .45 light / .80 dark, tint L .95 / .28)
    so Home and DigitalOcean carry equal visual weight and differ only in hue; hues sit away from the status hues
    (ok/warn/bad/accent) so a building never reads as a state. ?scheme=map|slate|mono */
@@ -155,6 +172,14 @@ function roomSummary(e, st, ns) {
 const U = 24;                          // px per tile in floor-plan space
 const SITE_ORDER = ["isp-lan", "house", "nyc1", "tor1", "ash", "do-edge"];
 const ROW_H = 3, PAD = 1, GAP = 3;     // tiles
+// The networks inside the house, one lane each, top to bottom. Colour and dash say which network a wire is on.
+const LANES = [
+  { id: "tailnet", name: "Tailnet · WireGuard mesh", note: "every k3s machine · also net.2143.me" },
+  { id: "ctrl", name: "k3s control plane", note: "servers · etcd + API" },
+  { id: "cluster", name: "k3s cluster network", note: "pods and services between nodes" },
+  { id: "lan", name: "House LAN", note: "plain, unencrypted" },
+];
+const LANE_GAP = 1.15;
 let est = null, built = "", sel = null, zoom = null, OX = 0, OY = 0;
 const pos = new Map();                 // entity key -> {x,y} tile centre in floor-plan space
 const els = new Map();                 // entity key -> floor-plan element
@@ -188,12 +213,17 @@ function build(e) {
   fp.textContent = ov.textContent = "";
   pos.clear(); els.clear(); lbs.clear(); cables.clear(); bbox.clear();
   const ingress = (sid) => e.stations.filter((s) => s.site === sid && s.tier === "ingress");
+  // A station that is also a machine (home-pi, pite, status-1) is drawn once, as the machine.
+  const nodeIds = new Set(e.nodes.map((n) => n.id)), alias = (s) => nodeIds.has(s.id);
   // The Traefik VIP is not a machine: it gets its own band, out of the kube platform.
   const vip = (sid) => e.stations.filter((s) => s.site === sid && s.kind === "vip");
-  const compute = (sid) => [...e.nodes.filter((n) => n.site === sid).map((n) => ({ n })), ...e.stations.filter((s) => s.site === sid && s.tier === "compute" && s.kind !== "vip").map((s) => ({ s }))];
+  const compute = (sid) => [...e.nodes.filter((n) => n.site === sid).map((n) => ({ n })), ...e.stations.filter((s) => s.site === sid && s.tier === "compute" && s.kind !== "vip" && !alias(s)).map((s) => ({ s }))];
   const RH = ROW_H + 0.66, isKube = (n) => n.role === "server" || n.role === "agent";
-  const service = (sid) => [...e.components.filter((c) => serviceSite(e, c) === sid).map((c) => ({ c })), ...e.stations.filter((s) => s.site === sid && s.tier === "service").map((s) => ({ s }))];
-  const roomW = (sid, min) => Math.max(min, ingress(sid).length * 3, compute(sid).length * 3, service(sid).length * 3) + 1;
+  const service = (sid) => [...e.components.filter((c) => serviceSite(e, c) === sid).map((c) => ({ c })), ...e.stations.filter((s) => s.site === sid && s.tier === "service" && !alias(s)).map((s) => ({ s }))];
+  // A room with nothing in its service row lays out on one row: ingress, then its machines beside it.
+  const compact = (s) => !s.planned && !vip(s.id).length && !service(s.id).length;
+  const roomW = (sid, min) => { const s = e.sites.find((x) => x.id === sid); return Math.max(min, compact(s) ? (ingress(sid).length + compute(sid).length) * 3 : Math.max(ingress(sid).length, compute(sid).length, service(sid).length) * 3) + 1; };
+  const LH = LANES.length * LANE_GAP + 0.8;   // the lane band under the router row
   const LEFT = 5, STREET_Y = -4;
   let y0 = 0, maxX = 0;
   for (const row of BUILDING_ROWS) {
@@ -207,7 +237,7 @@ function build(e) {
       const planned = sites.every((s) => s.planned);
       const roomH = planned ? ROW_H * 2 + 2 : ROW_H * 3 + 2;
       const bw = Math.max(...sites.map((s) => roomW(s.id, planned ? 4 : 6))) + PAD * 2;
-      const roomHOf = (s) => roomH + (vip(s.id).length ? RH : 0);
+      const roomHOf = (s) => (compact(s) ? RH + 0.6 : roomH + (vip(s.id).length ? RH + LH : 0));
       const bh = sites.reduce((a, s) => a + roomHOf(s) + PAD, PAD);
       const short = prov.name + (role === "edge" && e.sites.some((s) => s.provider === pid && s.role !== "edge") ? " edge" : "");
       bbox.set(bk, { x: bx, y: y0, w: bw, h: bh, name: prov.name + (role === "edge" ? " · CDN home proxy" : ""), short, planned });
@@ -215,30 +245,57 @@ function build(e) {
       div("front", b); div("frontr", b);
       let ry = y0 + PAD;
       for (const s of sites) {
-        const rw = bw - PAD * 2, rx = bx + PAD, rh = roomHOf(s), vb = vip(s.id).length ? 1 : 0;
+        const rw = bw - PAD * 2, rx = bx + PAD, rh = roomHOf(s), lanes = vip(s.id).length > 0;
         div("room" + (s.planned ? " planned" : ""), fp, { left: px(rx), top: px(ry), width: px(rw), height: px(rh) });
-        (planned ? [1] : vb ? [1, 2, 3] : [1, 2]).forEach((k) => div("row", fp, { left: px(rx), width: px(rw), top: px(ry + k * RH) }));
-        pos.set("room:" + s.id, { x: rx + Math.min(rw * 0.45, 7), y: ry + rh / 2 });   // inset so long room labels stay in view
-        const place = (key, i, rowIdx, w = 2, h = 2) => { const x = rx + 1 + i * 3, y = ry + 0.4 + rowIdx * RH; pos.set(key, { x: x + w / 2, y: y + h / 2 }); return { left: px(x), top: px(y), width: px(w), height: px(h) }; };
-        ingress(s.id).forEach((st, i) => els.set("st:" + st.id, div("tile st" + (st.planned ? " planned" : ""), fp, place("st:" + st.id, i, 0))));
-        // Kube platform under the k3s machines; the VIP rises out of it into its own band.
-        const cs = compute(s.id), kn = cs.map((o, i) => (o.n && isKube(o.n) ? i : -1)).filter((i) => i >= 0);
-        if (vb && kn.length) {
-          const x0 = rx + 1 + kn[0] * 3 - 0.5, x1 = rx + 1 + kn[kn.length - 1] * 3 + 2.5, ky = ry + RH, kh = 2.8, cx = (x0 + x1) / 2;
-          div("kube", fp, { left: px(x0), top: px(ky), width: px(x1 - x0), height: px(kh) });
-          pos.set("kube:" + s.id, { x: x0 + 0.6, y: ky + kh, n: kn.length });
-          const v = vip(s.id)[0], vy = ry + 0.4 + 2 * RH, vw = 5;
-          div("cable v k-vip", fp, { left: px(cx - 0.1), top: px(ky + kh), width: px(0.2), height: px(vy - ky - kh) });
-          els.set("st:" + v.id, div("tile st vip", fp, { left: px(cx - vw / 2), top: px(vy), width: px(vw), height: px(1.8) }));
-          pos.set("st:" + v.id, { x: cx, y: vy + 0.9 });
-        }
+        // Row tops, in tiles: ingress | (lanes) | machines | (VIP) | services.
+        const yIng = ry, yLane = ry + RH, yMach = lanes ? yLane + LH : ry + RH, yVip = yMach + RH, ySvc = lanes ? yVip + RH : yMach + RH;
+        const rowsY = compact(s) ? [] : lanes ? [yLane, yMach, yVip, ySvc] : planned ? [yMach] : [yMach, ySvc];
+        rowsY.forEach((y) => div("row", fp, { left: px(rx), width: px(rw), top: px(y) }));
+        // Room labels sit in the room's top-right corner, clear of the rows.
+        pos.set("room:" + s.id, lanes ? { x: rx + rw - 9, y: ry + 0.9 } : { x: rx + Math.min(rw * 0.45, 7), y: ry + rh / 2 });
+        const put = (key, i, y, w = 2, h = 2) => { const x = rx + 1 + i * 3; pos.set(key, { x: x + w / 2, y: y + 0.4 + h / 2 }); return { left: px(x), top: px(y + 0.4), width: px(w), height: px(h) }; };
+        const ing = ingress(s.id), cs = compute(s.id), mY = compact(s) ? yIng : yMach, m0 = compact(s) ? ing.length : 0;
+        ing.forEach((st, i) => els.set("st:" + st.id, div("tile st" + (st.planned ? " planned" : ""), fp, put("st:" + st.id, i, yIng))));
         cs.forEach((o, i) => {
-          if (o.n) { const r = div("rack", fp, place("n:" + o.n.id, i, 1)); r.innerHTML = "<i></i><i></i><i></i>"; els.set("n:" + o.n.id, r); }
-          else els.set("st:" + o.s.id, div("tile st", fp, place("st:" + o.s.id, i, 1)));
+          if (o.n) {
+            const r = div("rack", fp, put("n:" + o.n.id, m0 + i, mY)); r.innerHTML = "<i></i><i></i><i></i>"; els.set("n:" + o.n.id, r);
+            if (nodeIds.has(o.n.id)) { pos.set("st:" + o.n.id, pos.get("n:" + o.n.id)); els.set("st:" + o.n.id, r); }
+          } else els.set("st:" + o.s.id, div("tile st", fp, put("st:" + o.s.id, m0 + i, mY)));
         });
+        const kn = cs.map((o, i) => (o.n && isKube(o.n) ? i : -1)).filter((i) => i >= 0);
+        if (lanes && kn.length) {
+          // Kube platform around the k3s machines; the VIP comes out of it into its own row.
+          const x0 = rx + 1 + kn[0] * 3 - 0.5, x1 = rx + 1 + kn[kn.length - 1] * 3 + 2.5, cx = (x0 + x1) / 2;
+          div("kube", fp, { left: px(x0), top: px(yMach + 0.1), width: px(x1 - x0), height: px(2.8) });
+          pos.set("kube:" + s.id, { x: x0 + 0.6, y: yMach + 2.9, n: kn.length, x1 });
+          const v = vip(s.id)[0], vw = 5;
+          div("cable v k-vip", fp, { left: px(cx - 0.1), top: px(yMach + 2.9), width: px(0.2), height: px(yVip + 0.5 - yMach - 2.9) });
+          els.set("st:" + v.id, div("tile st vip", fp, { left: px(cx - vw / 2), top: px(yVip + 0.5), width: px(vw), height: px(1.8) }));
+          pos.set("st:" + v.id, { x: cx, y: yVip + 1.4 });
+          // Lanes: one bus per network, each machine drops a stub onto the networks it is on.
+          const members = { tailnet: (n) => isKube(n), ctrl: (n) => n.role === "server", cluster: (n) => isKube(n), lan: () => true };
+          LANES.forEach((ln, k) => {
+            const y = yLane + 0.6 + k * LANE_GAP, on = cs.filter((o) => (o.n ? members[ln.id](o.n) : ln.id === "lan"));
+            if (!on.length) return;
+            const xs = on.map((o) => pos.get(o.n ? "n:" + o.n.id : "st:" + o.s.id).x);
+            const lx0 = ln.id === "lan" || ln.id === "tailnet" ? rx + 0.5 : Math.min(...xs) - 1, lx1 = ln.id === "lan" ? rx + rw - 0.5 : ln.id === "tailnet" ? x1 + 1.6 : Math.max(...xs) + 1;
+            div("ln ln-" + ln.id, fp, { left: px(lx0), top: px(y), width: px(lx1 - lx0) });
+            pos.set("lane:" + ln.id, { x: lx1 - 0.2, y, x0: lx0, x1: lx1, y0: y, n: on.length });
+            on.forEach((o) => { const p = pos.get(o.n ? "n:" + o.n.id : "st:" + o.s.id), sx = p.x - 0.9 + k * 0.55; div("ln v ln-" + ln.id, fp, { left: px(sx), top: px(y), height: px(yMach + 0.4 - y) }); });
+          });
+          // Tailnet joins at the left end of its lane, inside the house.
+          if (e.stations.some((x) => x.id === "tailnet")) {
+            const y = yLane + 0.6;
+            els.set("st:tailnet", div("tile st ts", fp, { left: px(rx + 0.1), top: px(y - 0.6), width: px(1.2), height: px(1.2) }));
+            pos.set("st:tailnet", { x: rx + 0.7, y });
+          }
+          // LAN lane meets the router and the VIP: that is the in and the way back out.
+          const lan = pos.get("lane:lan"), r0 = ing.find((x) => x.kind === "router");
+          if (lan && r0) { const rp = pos.get("st:" + r0.id); div("ln v ln-lan", fp, { left: px(rp.x - 0.05), top: px(rp.y + 1), height: px(lan.y0 - rp.y - 1) }); }
+        }
         service(s.id).forEach((o, i) => {
           const key = o.c ? "c:" + o.c.id : "st:" + o.s.id;
-          els.set(key, div("tile " + (o.c ? "svc" : "st"), fp, place(key, i, 2 + vb, 2, 1.4)));
+          els.set(key, div("tile " + (o.c ? "svc" : "st"), fp, put(key, i, ySvc, 2, 1.4)));
         });
         ry += rh + PAD;
       }
@@ -257,10 +314,6 @@ function build(e) {
     els.set("st:wg", div("tile st", fp, { left: px(wgX - 0.9), top: px(wgY - 0.9), width: px(1.8), height: px(1.8) }));
     pos.set("st:wg", { x: wgX, y: wgY });
   }
-  if (hb && e.stations.some((s) => s.id === "tailnet")) {
-    els.set("st:tailnet", div("tile st", fp, { left: px(LEFT - 3.5), top: px(hb.y + hb.h * 0.75 - 0.9), width: px(1.8), height: px(1.8) }));
-    pos.set("st:tailnet", { x: LEFT - 2.6, y: hb.y + hb.h * 0.75 });
-  }
   const corners = [[0, STREET_Y], [maxX + 2, STREET_Y], [0, maxY + 1], [maxX + 2, maxY + 1]].map(([x, y]) => ({ x: 0.866 * (x - y) * U, y: 0.5 * (x + y) * U }));
   const minX = Math.min(...corners.map((c) => c.x)), minY = Math.min(...corners.map((c) => c.y));
   OX = -minX + 60; OY = -minY + 40;
@@ -268,25 +321,32 @@ function build(e) {
   cam.style.height = Math.max(...corners.map((c) => c.y)) - minY + 90 + "px";
   fp.style.left = OX + "px"; fp.style.top = OY + "px";
   fit();
+  // Wires are orthogonal polylines. A hop whose two ends are both inside a laned room (or that enters it
+  // from the tailnet) runs on its network's lane: down to the lane, along it, then down to the target.
+  const wire = (cls, pts, t = 0.16) => pts.slice(1).map((q, i) => {
+    const p = pts[i], vert = Math.abs(p.x - q.x) < 1e-6;
+    return div(cls + (vert ? " v" : ""), fp, vert ? { left: px(p.x - t / 2), top: px(Math.min(p.y, q.y)), width: px(t), height: px(Math.abs(q.y - p.y)) }
+      : { left: px(Math.min(p.x, q.x)), top: px(p.y - t / 2), width: px(Math.abs(q.x - p.x)), height: px(t) });
+  });
+  const laneOf = (h) => (h.from === "tailnet" ? "tailnet" : h.kind === "lan" ? "lan" : null);
   for (const h of e.hops) {
     const a = pos.get("st:" + h.from), b = pos.get("st:" + h.to);
     if (!a || !b) continue;
-    const segs = [], pts = [a, { x: b.x, y: a.y }, b];
-    segs.push(div("cable k-" + h.kind, fp, { left: px(Math.min(a.x, b.x)), top: px(a.y - 0.08), width: px(Math.abs(b.x - a.x)), height: px(0.16) }));
-    segs.push(div("cable v k-" + h.kind, fp, { left: px(b.x - 0.08), top: px(Math.min(a.y, b.y)), width: px(0.16), height: px(Math.abs(b.y - a.y)) }));
-    cables.set(h.id, { segs, pts, len: Math.abs(b.x - a.x) + Math.abs(b.y - a.y), pkts: [] });
+    const ln = laneOf(h) && pos.get("lane:" + laneOf(h)), inLane = ln && a.x >= ln.x0 - 1 && a.x <= ln.x1 + 1 && b.x >= ln.x0 - 1 && b.x <= ln.x1 + 1 && a.y <= ln.y + 1 && b.y > ln.y;
+    let pts;
+    if (inLane) {
+      // Drop on a free column right of the machine row (so it never crosses a rack), then across into the target.
+      const k = pos.get("kube:house") || ln, dropX = (k.x1 ?? ln.x1) + 0.6 + (laneOf(h) === "tailnet" ? 0.5 : 0);
+      const into = [{ x: dropX, y: b.y }, b];
+      pts = laneOf(h) === "tailnet" ? [a, { x: dropX, y: ln.y }, ...into] : [a, { x: a.x, y: ln.y }, { x: dropX, y: ln.y }, ...into];
+    } else pts = [a, { x: b.x, y: a.y }, b];
+    const segs = wire("cable k-" + h.kind + (inLane ? " on-lane ln-" + laneOf(h) : ""), pts);
+    cables.set(h.id, { segs, pts, len: pts.slice(1).reduce((s, q, i) => s + Math.abs(q.x - pts[i].x) + Math.abs(q.y - pts[i].y), 0), pkts: [] });
   }
-  // Return leg: replies from the VIP go back out through the MikroTik (drawn dashed, the other way round).
+  // Return leg: replies from the VIP go back out through the MikroTik on the LAN lane (dashed).
   {
-    const v = pos.get("st:traefik"), r = pos.get("st:router");
-    if (v && r) {
-      const x = v.x - 3.2;
-      [[x, v.y, v.x - 2.5, v.y], [x, r.y, x, v.y], [x, r.y, r.x, r.y]].forEach(([x0, y0, x1, y1]) => {
-        const vert = x0 === x1;
-        div("cable k-route" + (vert ? " v" : ""), fp, vert ? { left: px(x0 - 0.05), top: px(Math.min(y0, y1)), width: px(0.1), height: px(Math.abs(y1 - y0)) }
-          : { left: px(Math.min(x0, x1)), top: px(y0 - 0.05), width: px(Math.abs(x1 - x0)), height: px(0.1) });
-      });
-    }
+    const v = pos.get("st:traefik"), r = pos.get("st:router"), ln = pos.get("lane:lan");
+    if (v && r && ln) { const x = v.x + 3; wire("cable k-route", [{ x: v.x + 2.5, y: v.y }, { x, y: v.y }, { x, y: ln.y + 0.35 }, { x: r.x + 0.5, y: ln.y + 0.35 }, { x: r.x + 0.5, y: r.y + 1 }], 0.1); }
   }
   for (const c of e.components) {
     const h = e.hops.find((x) => x.id === c.via[c.via.length - 1]);
@@ -316,15 +376,22 @@ function build(e) {
       label("room:" + sid, "rm", "", () => zoomTo(bk), "rm", bk);
       for (const st of e.stations.filter((x) => x.site === sid && x.tier === "ingress")) label("st:" + st.id, "sign", "", () => select("st", st.id), "d", bk);
       for (const n of e.nodes.filter((x) => x.site === sid)) label("n:" + n.id, "", "", () => select("n", n.id), "d", bk);
-      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "compute" && x.kind !== "vip")) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
+      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "compute" && x.kind !== "vip" && !nodeIds.has(x.id))) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
       for (const st of e.stations.filter((x) => x.site === sid && x.kind === "vip")) label("st:" + st.id, "vip", "", () => select("st", st.id), "rm", bk);
       const kp = pos.get("kube:" + sid);
-      if (kp) label("kube:" + sid, "kube-l", `<b>k3s</b> · ${kp.n} nodes`, () => zoomTo(bk), "d", bk);
+      if (kp) label("kube:" + sid, "kube-l", `<b>k3s</b> · ${kp.n} nodes · also on <span class="net">${SUBNET.lan}</span>`, () => zoomTo(bk), "d", bk);
+      // Lane names sit in the open floor right of the k3s machines, each just above its own lane.
+      if (kp) for (const ln of LANES) {
+        const lp = pos.get("lane:" + ln.id); if (!lp) continue;
+        pos.set("lanel:" + ln.id, { x: kp.x1 + 2.4, y: lp.y - 0.1 });
+        label("lanel:" + ln.id, "lane lane-" + ln.id, `<i class="ln-${ln.id}"></i><b>${esc(ln.name)}</b> · ${esc(ln.note)}`, () => zoomTo(bk), "d", bk);
+      }
       for (const c of e.components.filter((x) => serviceSite(e, x) === sid)) label("c:" + c.id, "", "", () => select("c", c.id), "d", bk);
-      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "service")) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
+      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "service" && !nodeIds.has(x.id))) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
     }
   }
-  for (const id of ["internet", "tailnet", "wg"]) label("st:" + id, id === "internet" ? "sign" : "", "", () => select("st", id), "o", "");
+  for (const id of ["internet", "wg"]) label("st:" + id, id === "internet" ? "sign" : "", "", () => select("st", id), "o", "");
+  if (pos.get("st:tailnet")) label("st:tailnet", "", "", () => select("st", "tailnet"), "d", "home:origin");
   reanchor();
 }
 
@@ -470,7 +537,7 @@ function declutter() {
     return { x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh };
   };
   const obst = [...fp.querySelectorAll(".rack,.tile,.kube")].map((d) => box(parseFloat(d.style.left) / U, parseFloat(d.style.top) / U, parseFloat(d.style.width) / U, parseFloat(d.style.height) / U, d.classList.contains("kube") ? k * 0.85 : k));
-  const rank = (l) => (l.classList.contains("bl") ? 0 : l.dataset.lvl === "rm" ? 1 : l.dataset.lvl === "o" ? 2 : 3);
+  const rank = (l) => (l.classList.contains("lane") ? -1 : l.classList.contains("bl") ? 0 : l.dataset.lvl === "rm" ? 1 : l.dataset.lvl === "o" ? 2 : 3);
   const all = [...lbs.values()].filter((l) => l.bx != null && !l.hidden).sort((a, b) => rank(a) - rank(b) || a.by - b.by || a.bx - b.bx);
   const cover = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) + G) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) + G);
   const outside = (b) => Math.max(0, V.x - b.x) + Math.max(0, b.x + b.w - V.x - V.w) + Math.max(0, V.y - b.y) + Math.max(0, b.y + b.h - V.y - V.h);
@@ -479,10 +546,12 @@ function declutter() {
     const w = l.offsetWidth * inv, h = l.offsetHeight * inv, bl = l.classList.contains("bl");
     // Anchor box: building labels hang above their point, the rest are centred on it.
     const ax = l.bx - w / 2, ay = bl ? l.by - h : l.by - h / 2, sy = 0.55 * (h + G), sx = 0.25 * w + 8 * inv;
+    // Lane names are part of the lane: they stay on it.
+    if (l.classList.contains("lane")) { l.style.left = l.bx + "px"; l.style.top = l.by + "px"; placed.push({ x: l.bx, y: l.by - h - G, w, h }); continue; }
     // A label whose anchor is off-view (another building, when zoomed) is not pulled into view.
     const inView = outside({ x: l.bx, y: l.by, w: 0, h: 0 }) === 0;
     let best = null, bestCost = Infinity;
-    for (let j = -5; j <= 5; j++) for (let i = -4; i <= 4; i++) {
+    for (let j = -8; j <= 8; j++) for (let i = -6; i <= 6; i++) {
       const b = { x: ax + i * sx, y: ay + j * sy, w, h };
       if (placed.some((p) => cover(p, b) > 0)) continue;
       const dist = Math.hypot(i * sx, j * sy * 1.6);
