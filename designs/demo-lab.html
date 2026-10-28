@@ -48,8 +48,9 @@
 .lb{position:absolute;transform:translate(-50%,-50%) scale(var(--inv,1));font:inherit;font-size:.72rem;line-height:1.2;text-align:center;white-space:nowrap;
   border:1px solid var(--line);border-radius:5px;background:color-mix(in srgb,var(--bg) 88%,transparent);color:var(--fg);padding:.05rem .3rem;cursor:pointer}
 .lb b{font-weight:600}
-.lb.bl{font-size:.85rem;font-weight:700;border-color:var(--fg);transform:translate(-50%,-100%) scale(var(--inv,1))}
+.lb.bl{font-size:1.15rem;font-weight:800;letter-spacing:.01em;padding:.15rem .55rem;border-width:2px;border-color:var(--fg);background:var(--bg);box-shadow:3px 3px 0 color-mix(in srgb,var(--fg) 30%,var(--bg));z-index:2;transform:translate(-50%,-100%) scale(var(--inv,1))}
 .lb.planned{color:var(--muted);font-weight:400;border-color:var(--line)}
+.lb.bl.planned{font-size:.85rem;font-weight:500;border-width:1px;box-shadow:none;background:color-mix(in srgb,var(--bg) 88%,transparent)}
 .lb.rm{font-size:.72rem;color:var(--muted)}
 .lb.rm b{color:var(--fg)}
 .lb.s-down{border-color:var(--bad)}.lb.s-degraded{border-color:var(--warn)}
