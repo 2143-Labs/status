@@ -428,24 +428,41 @@ function update(e) {
   declutter();
 }
 
-// Greedy de-overlap in overlay space: walk labels top to bottom and push each one down
-// just far enough to clear those already placed. Labels never move more than 60 px.
+// Label placement in overlay space. Drawn things (racks, tiles, the k3s platform) are obstacles. Buildings
+// place first, then rooms and the Traefik row, then outside stations, then details. Each label tries small
+// steps around its anchor and takes the spot with the lowest cost: area of drawing it covers, plus distance
+// from its anchor (so it stays next to what it names), plus a heavy charge for leaving the view.
+// Labels never overlap each other.
 function declutter() {
   // Labels are counter-scaled by --inv, so in overlay coordinates each is offsetSize × --inv.
-  const inv = parseFloat(cam.style.getPropertyValue("--inv")) || 1;
-  const all = [...lbs.values()].filter((l) => l.bx != null && !l.hidden);
-  const box = all.map((l) => ({ l, w: l.offsetWidth * inv + 4, h: l.offsetHeight * inv + 2, x: l.bx, y: l.by, bl: l.classList.contains("bl") }));
-  box.sort((a, b) => a.y - b.y || a.x - b.x);
+  const inv = parseFloat(cam.style.getPropertyValue("--inv")) || 1, o0 = ov.getBoundingClientRect(), G = 3 * inv;
+  const rect = (r, k = 1) => { const w = r.width * inv * k, h = r.height * inv * k, cx = (r.left + r.width / 2 - o0.left) * inv, cy = (r.top + r.height / 2 - o0.top) * inv; return { x: cx - w / 2, y: cy - h / 2, w, h }; };
+  const V = rect($("#view").getBoundingClientRect());
+  // Iso tiles are diamonds; their inner 60% stands in for the shape. The k3s platform is a band: use half.
+  const obst = [...fp.querySelectorAll(".rack,.tile,.kube")].filter((d) => d.offsetParent).map((d) => rect(d.getBoundingClientRect(), d.classList.contains("kube") ? 0.5 : 0.6));
+  const rank = (l) => (l.classList.contains("bl") ? 0 : l.dataset.lvl === "rm" ? 1 : l.dataset.lvl === "o" ? 2 : 3);
+  const all = [...lbs.values()].filter((l) => l.bx != null && !l.hidden).sort((a, b) => rank(a) - rank(b) || a.by - b.by || a.bx - b.bx);
+  const cover = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) + G) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) + G);
+  const outside = (b) => Math.max(0, V.x - b.x) + Math.max(0, b.x + b.w - V.x - V.w) + Math.max(0, V.y - b.y) + Math.max(0, b.y + b.h - V.y - V.h);
   const placed = [];
-  for (const b of box) {
-    const top = (o) => (o.bl ? o.y - o.h : o.y - o.h / 2);
-    for (let i = 0; i < 12; i++) {
-      const hit = placed.find((o) => Math.abs(o.x - b.x) < (o.w + b.w) / 2 && top(b) < top(o) + o.h && top(o) < top(b) + b.h);
-      if (!hit || b.y - b.l.by > 60) break;
-      b.y = top(hit) + hit.h + (b.bl ? b.h : b.h / 2);
+  for (const l of all) {
+    const w = l.offsetWidth * inv, h = l.offsetHeight * inv, bl = l.classList.contains("bl");
+    // Anchor box: building labels hang above their point, the rest are centred on it.
+    const ax = l.bx - w / 2, ay = bl ? l.by - h : l.by - h / 2, sy = 0.55 * (h + G), sx = 0.25 * w + 8 * inv;
+    // A label whose anchor is off-view (another building, when zoomed) is not pulled into view.
+    const inView = outside({ x: l.bx, y: l.by, w: 0, h: 0 }) === 0;
+    let best = null, bestCost = Infinity;
+    for (let j = -5; j <= 5; j++) for (let i = -4; i <= 4; i++) {
+      const b = { x: ax + i * sx, y: ay + j * sy, w, h };
+      if (placed.some((p) => cover(p, b) > 0)) continue;
+      const dist = Math.hypot(i * sx, j * sy * 1.6);
+      const cost = obst.reduce((s, o) => s + cover(o, b), 0) * 4 + dist * h * 0.35 + (inView ? outside(b) * h * 40 : 0);
+      if (cost < bestCost) { best = b; bestCost = cost; }
     }
-    b.l.style.top = b.y + "px";
-    placed.push(b);
+    best = best || { x: ax, y: ay, w, h };
+    l.style.left = best.x + w / 2 + "px";
+    l.style.top = (bl ? best.y + h : best.y + h / 2) + "px";
+    placed.push(best);
   }
 }
 
