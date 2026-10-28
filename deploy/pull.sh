@@ -6,6 +6,10 @@ git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main +refs/heads/d
 new=$(git show refs/remotes/origin/deploy:DEPLOY_SHA | tr -d '[:space:]')
 git cat-file -e "$new^{commit}"
 old=$(git rev-parse HEAD)
+# Before the early exit below, which most ticks take: an idle droplet must still
+# get node_exporter. Fail-soft so a download problem never blocks a deploy.
+sh /opt/status/src/deploy/install-node-exporter.sh /opt/status/src \
+  || logger -t status-deploy "node_exporter install failed; host metrics stay absent"
 [ "$new" = "$old" ] && exit 0
 # A SHA that already failed is not retried; the next promotion is.
 if [ -f /var/lib/status/deploy-failed ] && [ "$(head -n1 /var/lib/status/deploy-failed)" = "$new" ]; then exit 0; fi
