@@ -45,6 +45,7 @@
 .cable.ts-link{display:none}.cable.ts-link.on{display:block;opacity:1}
 .legend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:var(--muted);margin:.2rem 0 .4rem}
 .legend i{position:static;display:inline-block;width:1.8em;height:3px;vertical-align:middle;margin-right:.4em}
+.legend .lg-ts{color:var(--info);margin-right:.35em;font-weight:700}
 .legend i.kube{height:.8em;width:1.2em}
 .cable.c-degraded{background:var(--warn)!important;opacity:1}.cable.c-down{background:var(--bad)!important;opacity:1}
 .pkt{position:absolute;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--fg);will-change:transform}
@@ -74,10 +75,13 @@
 .lb.kube-l{color:var(--accent);border-color:var(--accent)}
 .net{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.95em;color:var(--fg)}
 .tile.st.ts{border:2px solid var(--info);border-radius:50%;background:color-mix(in srgb,var(--info) 18%,var(--bg))}
-.room.ts-room{border-color:var(--info);border-style:dashed}
-/* Exit nodes are purple triangles (Tailscale purple, like the tunnels). The triangle is a ::before so the tile box keeps its hover outline and selected glow. */
+/* Exit nodes: an outlined Tailscale-purple triangle (evenodd clip cuts the inside out), drawn under the machine that
+   hosts it. The triangle is a ::before so the tile box keeps its hover outline and selected glow. */
 .tile.xn{border:0;background:none;border-radius:2px}
-.tile.xn::before{content:"";position:absolute;inset:0;background:var(--info);clip-path:polygon(50% 6%,95% 92%,5% 92%)}
+.tile.xn::before{content:"";position:absolute;inset:0;background:var(--info);clip-path:polygon(evenodd,50% 4%,97% 94%,3% 94%,50% 4%,50% 30%,22% 80%,78% 80%,50% 30%)}
+.tile.xn.nohost::before{opacity:.55}
+/* The short dashed link from an exit node or relay up to the machine it runs on. */
+.cable.xl{opacity:.75}
 .lb.tip:not(.alarm){z-index:5;transform:scale(var(--inv,1)) translate(-50%,0);box-shadow:0 2px 6px color-mix(in srgb,var(--fg) 25%,transparent)}
 .hot{cursor:pointer}.hot:hover{outline:2px solid var(--accent);outline-offset:1px}
 .dn-room{border-color:color-mix(in srgb,var(--fg) 35%,var(--bg))}
@@ -94,9 +98,6 @@
 .lb.dl-l b{color:var(--fg)}
 .lb.sv-l b{color:var(--accent)}
 .insp h3{font-size:.82rem;margin:.6rem 0 .2rem}
-.lb.ts-l{transform:scale(var(--inv,1)) translate(0,-50%);border-color:transparent;background:none}
-.lb.ts-l b{color:var(--info)}
-.ts-strip{position:absolute;border:1.5px dashed var(--info);border-radius:6px;background:color-mix(in srgb,var(--info) 5%,transparent)}
 .tile.dp{border:2px dashed var(--info);border-radius:3px;transform:rotate(45deg) scale(.8);background:color-mix(in srgb,var(--info) 12%,var(--bg))}
 .tile.dp.s-down,.tile.dp.s-unknown{border-color:var(--bad);background:var(--panel)}
 .tile.xn.s-down::before,.tile.xn.s-unknown::before{background:var(--bad)}
@@ -138,7 +139,7 @@
 <main id="stage" aria-describedby="plain-h">
   <div class="head"><h1>Lab</h1><span id="sum"></span><span id="ages"></span><label>Colours <select id="scheme"><option value="map">Map: earth / sea</option><option value="slate">Clay / slate</option><option value="mono">Mono</option></select></label></div>
   <p class="crumb" id="crumb"></p>
-  <p class="legend"><span><i class="cable k-public"></i>Internet</span><span><i class="cable k-lan"></i>Local network</span><span><i class="cable k-tunnel"></i>Encrypted tunnel (WireGuard / Tailscale)</span><span><i class="kube"></i>k3s cluster</span></p>
+  <p class="legend"><span><i class="cable k-public"></i>Internet</span><span><i class="cable k-lan"></i>Local network</span><span><i class="cable k-tunnel"></i>Encrypted tunnel (WireGuard / Tailscale)</span><span><i class="kube"></i>k3s cluster</span><span><b class="lg-ts">△</b>Tailscale exit node</span><span><b class="lg-ts">◇</b>DERP relay</span></p>
   <div class="wrap">
     <div class="view" id="view"><div class="cam" id="cam"><div class="floorplan" id="fp" aria-hidden="true"></div><div class="ov" id="ov"></div></div></div>
     <aside class="insp" id="insp" aria-live="polite"><p>Each building is a provider, each room a region. Top row: ingress. Middle: racks (machines) and compute. Bottom: services. Select anything to inspect; Enter on a building zooms in; Esc steps back out.</p></aside>
@@ -200,17 +201,18 @@ const DERP = [
   { id: "embedded", name: "Embedded DERP", where: "headscale in the home k3s cluster, behind Traefik", site: "house", at: "traefik", state: "up", ms: 4.4 },
   { id: "derp-r", name: "derp-r", where: "DOKS, DigitalOcean nyc1", site: "nyc1", at: "doks", state: "up", note: "relays; STUN gets no reply, so latency is not measured" },
 ];
-// Exit nodes; `site` set = it runs in that room, null = a third party (Mullvad), drawn in the Tailscale room.
+// Exit nodes; `site` set = it runs in that room (under `node`, or under station `at`); no site = host unknown,
+// drawn in the margin beside the tailnet.
 const EXIT_NODES = [
   { id: "nas", name: "nas", where: "Home", site: "house", node: "nas", state: "up" },
   { id: "doks-us-nyc", name: "doks-us-nyc", where: "DOKS, DigitalOcean nyc1", site: "nyc1", at: "doks", state: "up" },
   // Mullvad exits are tailscale+gluetun pods in vpn-endpoints: `node` is the rack the pod runs on (pods move; this
   // is a kubectl sample from 2026-10-29). State is the tailnet's view, not the pod's: za is Running but headscale
   // answers its polls with 404 node not found, so it is not an exit node at all.
-  { id: "mullvad-de", name: "Mullvad DE", where: "Düsseldorf", node: "nas", pod: "de-mullvad", state: "up" },
-  { id: "mullvad-ee", name: "Mullvad EE", where: "Tallinn", node: "big", pod: "ee-mullvad", state: "up" },
-  { id: "mullvad-jp", name: "Mullvad JP", where: "Tokyo", node: "arch", pod: "jp-mullvad", state: "up" },
-  { id: "mullvad-za", name: "Mullvad ZA", where: "South Africa", node: "closet", pod: "za-mullvad", state: "down", note: "Pod is Running 2/2, but headscale no longer knows the node (PollNetMap 404 node not found). Re-enrol it." },
+  { id: "mullvad-de", name: "Mullvad DE", where: "Düsseldorf", site: "house", node: "nas", pod: "de-mullvad", state: "up" },
+  { id: "mullvad-ee", name: "Mullvad EE", where: "Tallinn", site: "house", node: "big", pod: "ee-mullvad", state: "up" },
+  { id: "mullvad-jp", name: "Mullvad JP", where: "Tokyo", site: "house", node: "arch", pod: "jp-mullvad", state: "up" },
+  { id: "mullvad-za", name: "Mullvad ZA", where: "South Africa", site: "house", node: "closet", pod: "za-mullvad", state: "down", note: "Pod is Running 2/2, but headscale no longer knows the node (PollNetMap 404 node not found). Re-enrol it." },
   { id: "mullvad-us", name: "Mullvad US", where: "mullvad-us-vpin-deccam", state: "up", note: "Advertised on the tailnet, but no pod in vpn-endpoints runs it; where it runs is unknown." },
 ];
 // Direct (non-Traefik) services: the port each binds, and the interface that reaches it. The WAN rows are the
@@ -290,10 +292,11 @@ function build(e) {
   const service = (sid) => e.components.filter((c) => serviceSite(e, c) === sid).map((c) => ({ c }));
   // A room with nothing in its service row lays out on one row: ingress, then its machines beside it.
   const compact = (s) => !s.planned && !vip(s.id).length && !service(s.id).length;
-  // Tailscale things that run in a room (an exit node on nas, a relay in DOKS) get a row of their own there.
-  const tsIn = (sid) => [...DERP.filter((x) => x.site === sid).map((x) => ({ k: "dp:" + x.id, cls: "dp" })), ...EXIT_NODES.filter((x) => x.site === sid).map((x) => ({ k: "x:" + x.id, cls: "xn" }))];
-  const TS_RH = RH;   // a Tailscale row: tiles only; their names are hover tips
-  const roomW = (sid, min) => { const s = e.sites.find((x) => x.id === sid); return Math.max(min, tsIn(sid).length ? tsIn(sid).length * 3 + 5 : 0, compact(s) ? (ingress(sid).length + compute(sid).length) * 3 : Math.max(ingress(sid).length, compute(sid).length, service(sid).length * 3.9)) + 1; };
+  // Tailscale things that run in a room (exit nodes, relays) sit in a thin row directly under the machine or
+  // station that hosts them, each with a short link up to it. No box: the host is the grouping.
+  const tsIn = (sid) => [...DERP.filter((x) => x.site === sid).map((x) => ({ k: "dp:" + x.id, cls: "dp", host: "st:" + x.at })), ...EXIT_NODES.filter((x) => x.site === sid).map((x) => ({ k: "x:" + x.id, cls: "xn", host: x.node ? "n:" + x.node : "st:" + x.at }))];
+  const XR = 2.2;   // the exit row: small tiles only; their names are hover tips
+  const roomW = (sid, min) => { const s = e.sites.find((x) => x.id === sid); return Math.max(min, compact(s) ? (ingress(sid).length + compute(sid).length) * 3 : Math.max(ingress(sid).length, compute(sid).length, service(sid).length * 3.9)) + 1; };
   const LEFT = 5, STREET_Y = -4;
   let y0 = 0, maxX = 0;
   for (const row of BUILDING_ROWS) {
@@ -307,9 +310,9 @@ function build(e) {
       const planned = sites.every((s) => s.planned);
       const roomH = planned ? ROW_H * 2 + 2 : ROW_H * 3 + 2;
       const tsHere = bk === "home:origin" && e.stations.some((x) => x.id === "tailnet");
-      const bw = Math.max(...sites.map((s) => roomW(s.id, planned ? 4 : 6)), tsHere ? (EXIT_NODES.filter((x) => !x.site).length + 1) * 3 + 1 : 0) + PAD * 2;
-      const roomHOf = (s) => (compact(s) ? RH + 0.6 : roomH + (vip(s.id).length ? RH : 0) + (vip(s.id).length && service(s.id).length ? 1.2 : 0)) + (tsIn(s.id).length ? TS_RH : 0);
-      // The direct-services room: two strips of port tiles, sized like the Tailscale strip above it.
+      const bw = Math.max(...sites.map((s) => roomW(s.id, planned ? 4 : 6))) + PAD * 2;
+      const roomHOf = (s) => (compact(s) ? RH + 0.6 : roomH + (vip(s.id).length ? RH : 0) + (vip(s.id).length && service(s.id).length ? 1.2 : 0)) + (tsIn(s.id).length ? XR : 0);
+      // The direct-services room: two strips of port tiles.
       const dnHere = bk === "home:origin" && !planned;
       const dnW = bw - PAD * 2, DN_CAP = Math.max(4, Math.floor((dnW - 2) / 3.9));
       // Balance the rows: 10 tiles over 2 rows is 5 and 5, not 6 and 4.
@@ -319,7 +322,7 @@ function build(e) {
       // Target has no port forwards at all (the router's own name says so), so the WAN strip is today-only.
       const dnGroups = e.layout === "target" ? [2] : [1, 2];
       const dnRoomH = dnHere ? dnGroups.reduce((a, g) => a + dnH(g), 1.2) : 0;
-      const bh = sites.reduce((a, s) => a + roomHOf(s) + PAD, PAD) + (tsHere ? TS_RH + 0.6 + PAD : 0) + (dnHere ? dnRoomH + PAD : 0);
+      const bh = sites.reduce((a, s) => a + roomHOf(s) + PAD, PAD) + (dnHere ? dnRoomH + PAD : 0);
       const short = prov.name + (role === "edge" && e.sites.some((s) => s.provider === pid && s.role !== "edge") ? " edge" : "");
       bbox.set(bk, { x: bx, y: y0, w: bw, h: bh, name: prov.name + (role === "edge" ? " · CDN home proxy" : ""), short, planned });
       const b = div("bld" + provCls(pid) + (planned ? " planned" : ""), fp, { left: px(bx), top: px(y0), width: px(bw), height: px(bh) });
@@ -329,7 +332,8 @@ function build(e) {
         const rw = bw - PAD * 2, rx = bx + PAD, rh = roomHOf(s), hasVip = vip(s.id).length > 0;
         div("room" + (s.planned ? " planned" : ""), fp, { left: px(rx), top: px(ry), width: px(rw), height: px(rh) });
         // Row tops, in tiles: ingress | machines | (VIP) | services.
-        const svcN = service(s.id).length, yIng = ry, yMach = ry + RH, yVip = yMach + RH, ySvc = hasVip ? yVip + RH + (svcN ? 1.2 : 0) : yMach + RH;
+        const xr = tsIn(s.id).length ? XR : 0, yX = ry + RH * 2;
+        const svcN = service(s.id).length, yIng = ry, yMach = ry + RH, yVip = yMach + RH + xr, ySvc = hasVip ? yVip + RH + (svcN ? 1.2 : 0) : yMach + RH + xr;
         const rowsY = compact(s) ? [] : hasVip ? [yMach, yVip, ySvc] : planned ? [yMach] : [yMach, ySvc];
         rowsY.forEach((y) => div("row", fp, { left: px(rx), width: px(rw), top: px(y) }));
         // Room labels sit in the ingress row's free space, clear of the machines.
@@ -364,14 +368,18 @@ function build(e) {
             els.set(key, t);
           });
         }
-        // Bottom row: this room's Tailscale relays and exit nodes, in a dashed Tailscale strip.
-        const ti = tsIn(s.id);
-        if (ti.length) {
-          const yTs = ry + rh - TS_RH;
-          div("row", fp, { left: px(rx), width: px(rw), top: px(yTs) });
-          div("ts-strip", fp, { left: px(rx + 0.5), top: px(yTs + 0.2), width: px(rw - 1), height: px(TS_RH - 0.4) });
-          pos.set("tsl:" + s.id, { x: rx + ti.length * 3 + 2.4, y: yTs + RH / 2 });
-          ti.forEach((o, i) => els.set(o.k, div("tile " + o.cls, fp, put(o.k, i, yTs))));
+        // The exit row, just under the machines: each relay or exit node directly below its host, several
+        // hosts' worth side by side. Hosts below the row (the Traefik VIP) work too; the link just runs down.
+        const byHost = new Map();
+        for (const o of tsIn(s.id)) { const hp = pos.get(o.host); if (hp) byHost.set(o.host, [...(byHost.get(o.host) || []), o]); }
+        // Want each tile under its host; then sweep left to right so no two sit closer than a tile and a gap
+        // (the Traefik VIP is centred over the cluster, so its relay would otherwise land on nas's exits).
+        const row = [...byHost].flatMap(([hk, arr]) => arr.map((o, j) => ({ o, hk, x: pos.get(hk).x + (j - (arr.length - 1) / 2) * 1.8 }))).sort((p, q) => p.x - q.x);
+        row.forEach((r, i) => { if (i && r.x < row[i - 1].x + 1.8) r.x = row[i - 1].x + 1.8; });
+        const y = yX + XR / 2;
+        for (const { o, hk, x } of row) {
+          pos.set(o.k, { x, y, host: hk });
+          els.set(o.k, div("tile " + o.cls, fp, { left: px(x - 0.7), top: px(y - 0.7), width: px(1.4), height: px(1.4) }));
         }
         ry += rh + PAD;
       }
@@ -399,14 +407,17 @@ function build(e) {
         pos.set("room:direct", { x: rx + dnW - 5, y: ry + 0.5 });
         ry += dnRoomH + PAD;
       }
-      // Tailscale is its own network, so it gets its own room: the tailnet, then every usable exit node.
+      // Tailscale is an overlay, not a place: the tailnet sits in the margin left of Home, with any exit node
+      // whose host is unknown stacked under it.
       if (tsHere) {
-        const rw = bw - PAD * 2, rx = bx + PAD, rh = TS_RH + 0.6;
-        div("room ts-room", fp, { left: px(rx), top: px(ry), width: px(rw), height: px(rh) });
-        const put = (key, i) => { const x = rx + 1 + i * 3; pos.set(key, { x: x + 1, y: ry + 1.4 }); return { left: px(x), top: px(ry + 0.4), width: px(2), height: px(2) }; };
-        els.set("st:tailnet", div("tile st ts", fp, put("st:tailnet", 0)));
-        EXIT_NODES.filter((x) => !x.site).forEach((x, i) => els.set("x:" + x.id, div("tile xn", fp, put("x:" + x.id, i + 1))));
-        pos.set("room:tailscale", { x: rx + rw - 6, y: ry + 0.5 });
+        const x = bx - 2.6, y = y0 + PAD + RH + 1.4;
+        els.set("st:tailnet", div("tile st ts", fp, { left: px(x - 1), top: px(y - 1), width: px(2), height: px(2) }));
+        pos.set("st:tailnet", { x, y });
+        EXIT_NODES.filter((q) => !q.site).forEach((q, i) => {
+          const yy = y + 2.8 + i * 2.4;
+          els.set("x:" + q.id, div("tile xn nohost", fp, { left: px(x - 0.7), top: px(yy - 0.7), width: px(1.4), height: px(1.4) }));
+          pos.set("x:" + q.id, { x, y: yy });
+        });
       }
       bx += bw + GAP; rowH = Math.max(rowH, bh);
     }
@@ -449,8 +460,16 @@ function build(e) {
   // to the place it runs. All hidden until the tailnet or that relay is selected, so they never add noise.
   const tsWire = (key, a, b) => { if (!a || !b) return; const pts = [a, { x: a.x, y: Math.min(a.y, b.y) }, { x: b.x, y: Math.min(a.y, b.y) }, b].filter((p, i, arr) => !i || p.x !== arr[i - 1].x || p.y !== arr[i - 1].y); cables.set(key, { segs: wire("cable k-tunnel ts-link", pts), pts, len: 0, pkts: [] }); };
   tsWire("ts:inet", pos.get("st:tailnet"), pos.get("st:internet"));
-  for (const x of DERP) tsWire("dp:" + x.id, pos.get("dp:" + x.id), pos.get("st:" + x.at));
-  for (const x of EXIT_NODES) if (x.node || x.at) tsWire("xn:" + x.id, pos.get("x:" + x.id), pos.get(x.node ? "n:" + x.node : "st:" + x.at));
+  // Each relay and exit node is linked to the machine it runs on: a short vertical from the tile to the host's edge.
+  const hostLink = (key, k) => {
+    const a = pos.get(k), b = a && a.host && pos.get(a.host), hb = b && els.get(a.host); if (!hb) return;
+    const hh = parseFloat(hb.style.height) / U / 2, down = b.y > a.y, y0 = a.y + (down ? 0.7 : -0.7), y1 = b.y + (down ? -hh : hh);
+    // Straight up when the tile is under its host; otherwise a small elbow half-way.
+    const pts = Math.abs(a.x - b.x) < 0.05 ? [{ x: a.x, y: y0 }, { x: a.x, y: y1 }] : [{ x: a.x, y: y0 }, { x: a.x, y: (y0 + y1) / 2 }, { x: b.x, y: (y0 + y1) / 2 }, { x: b.x, y: y1 }];
+    cables.set(key, { segs: wire("cable k-tunnel xl", pts, 0.12), pts, len: 0, pkts: [] });
+  };
+  for (const x of DERP) hostLink("dp:" + x.id, "dp:" + x.id);
+  for (const x of EXIT_NODES) hostLink("xn:" + x.id, "x:" + x.id);
   for (const c of e.components) {
     const h = e.hops.find((x) => x.id === c.via[c.via.length - 1]);
     const a = h && pos.get("st:" + h.to), b = pos.get("c:" + c.id);
@@ -503,8 +522,6 @@ function build(e) {
   for (const id of ["internet", "wg"]) label("st:" + id, id === "internet" ? "sign" : "", "", () => select("st", id), "o", "");
   if (pos.get("st:tailnet")) {
     label("st:tailnet", "sign", "", () => select("st", "tailnet"), "d", "home:origin");
-    for (const sid of SITE_ORDER) if (pos.get("tsl:" + sid)) label("tsl:" + sid, "rm ts-l", "<b>Tailscale</b>", () => select("st", "tailnet"), "d", bkOf(e.sites.find((y) => y.id === sid)));
-    label("room:tailscale", "rm", "<b>Tailscale</b> · tailnet and third-party exit nodes", () => zoomTo("home:origin"), "rm", "home:origin");
     for (const x of DERP) label("dp:" + x.id, "", "", () => select("dp", x.id), "d", bkOf(e.sites.find((y) => y.id === x.site)));
     for (const x of EXIT_NODES) label("x:" + x.id, "", "", () => select("x", x.id), "d", x.site ? bkOf(e.sites.find((y) => y.id === x.site)) : "home:origin");
   }
@@ -679,7 +696,7 @@ function declutter() {
   const obst = [...fp.querySelectorAll(".rack,.tile,.kube")].map((d) => box(parseFloat(d.style.left) / U, parseFloat(d.style.top) / U, parseFloat(d.style.width) / U, parseFloat(d.style.height) / U, d.classList.contains("kube") ? k * 0.85 : k));
   // Labels pinned under a drawn thing go before the free ones, so the free ones work around them.
   const rank = (l) => (l.classList.contains("bl") ? 0 : els.get(l.pk)?.style.width ? 1 : l.dataset.lvl === "rm" ? 2 : 3);
-  const all = [...lbs.values()].filter((l) => l.bx != null && !l.hidden && !(l.classList.contains("tip") && !l.classList.contains("alarm")) && !l.classList.contains("ts-l") && !l.classList.contains("dl-l") && l.pk !== "room:direct").sort((a, b) => rank(a) - rank(b) || a.by - b.by || a.bx - b.bx);
+  const all = [...lbs.values()].filter((l) => l.bx != null && !l.hidden && !(l.classList.contains("tip") && !l.classList.contains("alarm")) && !l.classList.contains("dl-l") && l.pk !== "room:direct").sort((a, b) => rank(a) - rank(b) || a.by - b.by || a.bx - b.bx);
   const cover = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) + G) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) + G);
   const outside = (b) => Math.max(0, V.x - b.x) + Math.max(0, b.x + b.w - V.x - V.w) + Math.max(0, V.y - b.y) + Math.max(0, b.y + b.h - V.y - V.h);
   // Labels pinned under a thing ignore the k3s box: it is a container, its racks are what they name.
