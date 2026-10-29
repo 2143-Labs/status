@@ -30,13 +30,8 @@ NODE_META = {  # site, role, arch, lan_ip
     "office": ("agent", "amd64", "192.168.5.209"),
     "pite": ("agent", "arm64", "192.168.5.9"),
 }
-GiB, MiB, GB = 1024 ** 3, 1024 ** 2, 10 ** 9
-CLOUD = [
-    dict(id="doks-1", name="doks-1", site="nyc1", role="doks", arch="amd64", lan_ip="10.108.0.2",
-         cpu_cores=2, ram_bytes=4 * GiB, disk_bytes=80 * GB, public_ip_locked=True),
-    dict(id="status-1", name="status-1", site="tor1", role="droplet", arch="amd64", lan_ip=None,
-         cpu_cores=1, ram_bytes=512 * MiB, disk_bytes=10 * GB, public_ip_locked=True),
-]
+CLOUD_NODES = {"doks-1": "doks", "status-1": "do"}  # topology node id -> Mimir cluster label
+CLOUD_DEV = 'device!~"lo|veth.*|cni.*|flannel.*|lxc.*|cilium.*|anchor|cpbridge"'
 TOPO = json.loads((Path(__file__).resolve().parent.parent / "designs" / "estate-topology.json").read_text(encoding="utf-8"))
 COMPONENT_ROUTE = {"john2143-com": "home-direct", "files-john2143-com": "home-direct", "2143-me": "do-only",
                    "2143-me-user": "do-only", "i-2143-me": "images", "temporal": "temporal-grpc"}
@@ -66,6 +61,15 @@ def per_host(expr):
         h = host(s["metric"].get("instance", ""))
         if h in HOUSE:
             out[h] = float(s["value"][1])
+    return out
+
+
+def per_cloud(expr):
+    out = {}
+    for s in q(expr):
+        n = s["metric"].get("node", "")
+        if n in CLOUD_NODES:
+            out[n] = (float(s["value"][1]), s["metric"])
     return out
 
 
@@ -117,14 +121,37 @@ def build(per_node):
             nodes.insert(0, dict(id=t[0], name=t[0], site=t[1], role=t[2], arch=t[3], lan_ip=t[4], cpu_cores=t[5],
                                  ram_bytes=t[6], disk_bytes=t[7], cpu_pct=0, ram_pct=0, disk_pct=0, net_rx_bps=0,
                                  net_tx_bps=0, load1=0, temp_c=None, state="unknown", age_s=None, public_ip_locked=t[8]))
-    for c in CLOUD:
-        nodes.append(dict(c, cpu_pct=0, ram_pct=0, disk_pct=0, net_rx_bps=0, net_tx_bps=0,
-                          load1=0, temp_c=None, state="unknown", age_s=None))
+    sel = 'cluster=~"do|doks"'
+    c_cores = per_cloud(f'count by (node)(node_cpu_seconds_total{{mode="idle",{sel}}})')
+    c_mem = per_cloud(f'node_memory_MemTotal_bytes{{{sel}}}')
+    c_disk = per_cloud(f'node_filesystem_size_bytes{{mountpoint="/",{sel}}}')
+    c_cpu = per_cloud(f'100 - (avg by (node)(rate(node_cpu_seconds_total{{mode="idle",{sel}}}[5m])) * 100)')
+    c_ram = per_cloud(f'(1 - node_memory_MemAvailable_bytes{{{sel}}}/node_memory_MemTotal_bytes{{{sel}}}) * 100')
+    c_dsk = per_cloud(f'(1 - node_filesystem_avail_bytes{{mountpoint="/",{sel}}}/node_filesystem_size_bytes{{mountpoint="/",{sel}}}) * 100')
+    c_load = per_cloud(f'node_load1{{{sel}}}')
+    c_rx = per_cloud(f'sum by (node)(rate(node_network_receive_bytes_total{{{sel},{CLOUD_DEV}}}[5m]))')
+    c_tx = per_cloud(f'sum by (node)(rate(node_network_transmit_bytes_total{{{sel},{CLOUD_DEV}}}[5m]))')
+    c_name = per_cloud(f'node_uname_info{{{sel}}}')
+    for t in TOPO["nodes"]:
+        if t[0] not in CLOUD_NODES:
+            continue
+        n = t[0]
+        val = lambda d, default=0: d[n][0] if n in d else default  # noqa: E731
+        seen = n in c_load
+        pct = [round(val(x), 1) for x in (c_cpu, c_ram, c_dsk)]
+        nodes.append(dict(
+            id=n, name=c_name[n][1].get("nodename", n) if n in c_name else n, site=t[1], role=t[2], arch=t[3],
+            lan_ip=t[4], cpu_cores=int(val(c_cores, t[5])), ram_bytes=int(val(c_mem, t[6])),
+            disk_bytes=int(val(c_disk, t[7])), cpu_pct=pct[0], ram_pct=pct[1], disk_pct=pct[2],
+            net_rx_bps=round(val(c_rx)), net_tx_bps=round(val(c_tx)), load1=round(val(c_load), 2), temp_c=None,
+            state=("degraded" if max(pct) >= 90 else "up") if seen else "unknown",
+            age_s=0 if seen else None, public_ip_locked=t[8]))
 
+    placed = set(HOUSE) | {"doks-1"}
     pod_node = {}
     for s in q('kube_pod_info{node!=""}'):
         m = s["metric"]
-        if m.get("node") in HOUSE:
+        if m.get("node") in placed:
             pod_node[(m["namespace"], m["pod"])] = m["node"]
     req = {}
     for s in q('sum by (namespace,pod,resource) (kube_pod_container_resource_requests)'):
@@ -136,7 +163,7 @@ def build(per_node):
                 r[m["resource"]] += float(s["value"][1])
 
     workloads = []
-    for h in HOUSE:
+    for h in HOUSE + ["doks-1"]:
         pods = sorted((k for k, n in pod_node.items() if n == h),
                       key=lambda k: (-req.get(k, {}).get("memory", 0), k))
         for i, (ns, pod) in enumerate(pods[:per_node]):
