@@ -78,6 +78,19 @@
 .tile.xn{border-radius:50%;border:2px solid var(--ok);background:color-mix(in srgb,var(--ok) 14%,var(--bg))}
 .lb.tip:not(.alarm){z-index:5;transform:scale(var(--inv,1)) translate(-50%,0);box-shadow:0 2px 6px color-mix(in srgb,var(--fg) 25%,transparent)}
 .hot{cursor:pointer}.hot:hover{outline:2px solid var(--accent);outline-offset:1px}
+.dn-room{border-color:color-mix(in srgb,var(--fg) 35%,var(--bg))}
+.strip{position:absolute;border:1.5px dashed color-mix(in srgb,var(--fg) 40%,var(--bg));border-radius:6px;background:color-mix(in srgb,var(--fg) 3%,transparent)}
+.tile.dn,.tile.svc{display:flex;align-items:center;justify-content:center;font:inherit;font-size:.62rem;background:var(--panel);overflow:hidden}
+.tile.svc b{font-weight:600;letter-spacing:-.02em;white-space:nowrap;font-size:.92em}
+.tile.dn b{font-weight:600;letter-spacing:-.02em;white-space:nowrap}
+.tile.dn.sm b{font-size:.86em}
+.tile.dn.wg{box-shadow:inset 3px 0 0 var(--info)}
+.lb.pn{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.66rem;color:var(--fg);border-color:transparent;background:none;padding:0 .1rem}
+.lb.pn b{font-weight:600}
+.lb.dl-l{transform:scale(var(--inv,1)) translate(0,-50%);border-color:transparent;background:none;font-size:.68rem;color:var(--muted)}
+.lb.dl-l b{color:var(--fg)}
+.lb.sv-l b{color:var(--accent)}
+.insp h3{font-size:.82rem;margin:.6rem 0 .2rem}
 .lb.ts-l{transform:scale(var(--inv,1)) translate(0,-50%);border-color:transparent;background:none}
 .lb.ts-l b{color:var(--info)}
 .ts-strip{position:absolute;border:1.5px dashed var(--info);border-radius:6px;background:color-mix(in srgb,var(--info) 5%,transparent)}
@@ -193,10 +206,55 @@ const EXIT_NODES = [
   { id: "mullvad-ee", name: "Mullvad EE", where: "Tallinn", state: "up" },
   { id: "mullvad-jp", name: "Mullvad JP", where: "Tokyo", state: "up" },
 ];
+// Direct (non-Traefik) services: the port each binds, and the interface that reaches it. The WAN rows are the
+// router's dst-nat table plus the Verizon forwards (read-only `print`, 2026-10-29); the internal rows are the
+// service inventory and the tunnel ACL. RFC 1918 and 10.99 only, so safe to publish.
+// g 1 = port-forwarded from the internet; g 2 = internal only (the LAN, plus WireGuard where wg is set).
+const DIRECT = [
+  // One tile per forwarded port, so each label stays narrow and sits under its own tile.
+  { g: 1, id: "smtp", n: "Mail SMTP", p: "25", pr: "tcp", ip: "192.168.6.13", f: "25", note: "Stalwart" },
+  { g: 1, id: "submission", n: "Mail submission", p: "587", pr: "tcp", ip: "192.168.6.13", f: "587", note: "Stalwart" },
+  { g: 1, id: "imaps", n: "Mail IMAPS", p: "993", pr: "tcp", ip: "192.168.6.13", f: "993", note: "Stalwart" },
+  { g: 1, id: "coturn", n: "Steam lobby TURN", p: "3478", pr: "tcp+udp", ip: "192.168.6.14", f: "3478 tcp+udp" },
+  { g: 1, id: "coturn-relay", n: "TURN relay range", p: "45000-63", pr: "udp", ip: "192.168.6.14", f: "45000-45063 udp" },
+  { g: 1, id: "ts-voice", n: "TeamSpeak voice", p: "9987", pr: "udp", ip: "192.168.6.15", f: "9987" },
+  { g: 1, id: "ts-files", n: "TeamSpeak files", p: "30033", pr: "tcp", ip: "192.168.6.16", f: "30033" },
+  { g: 1, id: "openrct2", n: "OpenRCT2", p: "11753", pr: "tcp", ip: "192.168.6.17", f: "11753" },
+  { g: 1, id: "stun", n: "headscale STUN", p: "3479", pr: "udp", ip: "192.168.6.18", f: "3479", note: "externalTrafficPolicy: Local" },
+  { g: 1, id: "livekit", n: "LiveKit signal", p: "7881", pr: "tcp", ip: "192.168.6.22", f: "7881" },
+  { g: 1, id: "minecraft", n: "Minecraft", p: "25565", pr: "tcp", ip: "192.168.6.29", f: "25565" },
+  { g: 1, id: "factorio", n: "Factorio", p: "34197", pr: "udp", ip: "192.168.6.28", f: "34197" },
+  { g: 1, id: "monero", n: "Monero P2P", p: "18080", pr: "tcp", ip: "192.168.5.76", f: "18080", note: "bare metal, not in the cluster" },
+  { g: 2, id: "postgres", n: "Postgres", p: "5432", pr: "tcp", ip: "192.168.5.36", wg: 1, note: "in-cluster, on closet" },
+  { g: 2, id: "temporal", n: "Temporal gRPC", p: "7233", pr: "tcp", ip: "192.168.6.20", wg: 1 },
+  { g: 2, id: "seaweed", n: "SeaweedFS S3", p: "8333", pr: "tcp", ip: "192.168.6.31", wg: 1, st: "s3" },
+  { g: 2, id: "mimir", n: "Mimir", p: "8080", pr: "tcp", ip: "192.168.6.23", wg: 1 },
+  { g: 2, id: "loki", n: "Loki", p: "3100", pr: "tcp", ip: "192.168.6.24", wg: 1 },
+  { g: 2, id: "mosquitto", n: "MQTT", p: "1883", pr: "tcp", ip: "192.168.6.19" },
+  { g: 2, id: "syslog", n: "Syslog", p: "514", pr: "udp", ip: "192.168.6.25" },
+  { g: 2, id: "frigate", n: "Frigate", p: "—", pr: "tcp", ip: "192.168.6.26", note: "no port recorded" },
+  { g: 2, id: "lan-dns", n: "LAN DNS", p: "53", pr: "tcp+udp", ip: "192.168.6.30" },
+  { g: 2, id: "k8s-api", n: "k8s API", p: "6443", pr: "tcp", ip: "192.168.5.10", note: "v4 only" },
+];
+const DGRP = { 1: { k: "wan", t: "WAN · port-forwarded" }, 2: { k: "int", t: "Internal · LAN and WireGuard" } };
 let flat = false;
 const project = (x, y) => (flat ? { x: OX + x * U, y: OY + y * U } : { x: OX + 0.866 * (x - y) * U, y: OY + 0.5 * (x + y) * U });
 const div = (cls, parent, st) => { const d = document.createElement("div"); d.className = cls; Object.assign(d.style, st || {}); parent.append(d); return d; };
 const px = (t) => t * U + "px";
+
+// A service tile carries a short name; the hover tip and the inspector carry the full hostname.
+const shortName = (n) => {
+  if (/^[a-z0-9./-]+$/i.test(n) && n.includes(".")) {
+    if (n.length <= 9) return n;                        // 2143.me, i.2143.me
+    const seg = n.split("/")[1];
+    return (seg || n.split(".")[0]).slice(0, 9);         // 2143.me/user -> user; files.john2143.com -> files
+  }
+  const h = /^(.+?)\.(john2143\.com|2143\.me)$/.exec(n);
+  if (h) return h[1].slice(0, 9);
+  const u = /^(.+?)\/(.+)$/.exec(n);
+  if (u) return u[2].slice(0, 9);
+  return n.replace(/\s*\(.*\)\s*/, "").split(" ")[0].slice(0, 9);
+};
 
 // Which room a component's service tile belongs to: the room at the end of its via path.
 function serviceSite(e, c) {
@@ -222,13 +280,13 @@ function build(e) {
   const vip = (sid) => e.stations.filter((s) => s.site === sid && s.kind === "vip");
   const compute = (sid) => [...e.nodes.filter((n) => n.site === sid).map((n) => ({ n })), ...e.stations.filter((s) => s.site === sid && s.tier === "compute" && s.kind !== "vip" && !alias(s)).map((s) => ({ s }))];
   const RH = ROW_H + 0.66, isKube = (n) => n.role === "server" || n.role === "agent";
-  const service = (sid) => [...e.components.filter((c) => serviceSite(e, c) === sid).map((c) => ({ c })), ...e.stations.filter((s) => s.site === sid && s.tier === "service" && !alias(s)).map((s) => ({ s }))];
+  const service = (sid) => e.components.filter((c) => serviceSite(e, c) === sid).map((c) => ({ c }));
   // A room with nothing in its service row lays out on one row: ingress, then its machines beside it.
   const compact = (s) => !s.planned && !vip(s.id).length && !service(s.id).length;
   // Tailscale things that run in a room (an exit node on nas, a relay in DOKS) get a row of their own there.
   const tsIn = (sid) => [...DERP.filter((x) => x.site === sid).map((x) => ({ k: "dp:" + x.id, cls: "dp" })), ...EXIT_NODES.filter((x) => x.site === sid).map((x) => ({ k: "x:" + x.id, cls: "xn" }))];
   const TS_RH = RH;   // a Tailscale row: tiles only; their names are hover tips
-  const roomW = (sid, min) => { const s = e.sites.find((x) => x.id === sid); return Math.max(min, tsIn(sid).length ? tsIn(sid).length * 3 + 5 : 0, compact(s) ? (ingress(sid).length + compute(sid).length) * 3 : Math.max(ingress(sid).length, compute(sid).length, service(sid).length) * 3) + 1; };
+  const roomW = (sid, min) => { const s = e.sites.find((x) => x.id === sid); return Math.max(min, tsIn(sid).length ? tsIn(sid).length * 3 + 5 : 0, compact(s) ? (ingress(sid).length + compute(sid).length) * 3 : Math.max(ingress(sid).length, compute(sid).length, service(sid).length * 3.9)) + 1; };
   const LEFT = 5, STREET_Y = -4;
   let y0 = 0, maxX = 0;
   for (const row of BUILDING_ROWS) {
@@ -243,8 +301,18 @@ function build(e) {
       const roomH = planned ? ROW_H * 2 + 2 : ROW_H * 3 + 2;
       const tsHere = bk === "home:origin" && e.stations.some((x) => x.id === "tailnet");
       const bw = Math.max(...sites.map((s) => roomW(s.id, planned ? 4 : 6)), tsHere ? (EXIT_NODES.filter((x) => !x.site).length + 1) * 3 + 1 : 0) + PAD * 2;
-      const roomHOf = (s) => (compact(s) ? RH + 0.6 : roomH + (vip(s.id).length ? RH : 0)) + (tsIn(s.id).length ? TS_RH : 0);
-      const bh = sites.reduce((a, s) => a + roomHOf(s) + PAD, PAD) + (tsHere ? TS_RH + 0.6 + PAD : 0);
+      const roomHOf = (s) => (compact(s) ? RH + 0.6 : roomH + (vip(s.id).length ? RH : 0) + (vip(s.id).length && service(s.id).length ? 1.2 : 0)) + (tsIn(s.id).length ? TS_RH : 0);
+      // The direct-services room: two strips of port tiles, sized like the Tailscale strip above it.
+      const dnHere = bk === "home:origin" && !planned;
+      const dnW = bw - PAD * 2, DN_CAP = Math.max(4, Math.floor((dnW - 2) / 3.9));
+      // Balance the rows: 10 tiles over 2 rows is 5 and 5, not 6 and 4.
+      const dnGrid = (g) => { const n = DIRECT.filter((d) => d.g === g).length, r = Math.ceil(n / DN_CAP); return { n, r, per: Math.ceil(n / r) }; };
+      const DN_ROW = 2.5;
+      const dnH = (g) => { const q = dnGrid(g); return q.r * DN_ROW + 1.7; };
+      // Target has no port forwards at all (the router's own name says so), so the WAN strip is today-only.
+      const dnGroups = e.layout === "target" ? [2] : [1, 2];
+      const dnRoomH = dnHere ? dnGroups.reduce((a, g) => a + dnH(g), 1.2) : 0;
+      const bh = sites.reduce((a, s) => a + roomHOf(s) + PAD, PAD) + (tsHere ? TS_RH + 0.6 + PAD : 0) + (dnHere ? dnRoomH + PAD : 0);
       const short = prov.name + (role === "edge" && e.sites.some((s) => s.provider === pid && s.role !== "edge") ? " edge" : "");
       bbox.set(bk, { x: bx, y: y0, w: bw, h: bh, name: prov.name + (role === "edge" ? " · CDN home proxy" : ""), short, planned });
       const b = div("bld" + provCls(pid) + (planned ? " planned" : ""), fp, { left: px(bx), top: px(y0), width: px(bw), height: px(bh) });
@@ -254,11 +322,11 @@ function build(e) {
         const rw = bw - PAD * 2, rx = bx + PAD, rh = roomHOf(s), hasVip = vip(s.id).length > 0;
         div("room" + (s.planned ? " planned" : ""), fp, { left: px(rx), top: px(ry), width: px(rw), height: px(rh) });
         // Row tops, in tiles: ingress | machines | (VIP) | services.
-        const yIng = ry, yMach = ry + RH, yVip = yMach + RH, ySvc = hasVip ? yVip + RH : yMach + RH;
+        const svcN = service(s.id).length, yIng = ry, yMach = ry + RH, yVip = yMach + RH, ySvc = hasVip ? yVip + RH + (svcN ? 1.2 : 0) : yMach + RH;
         const rowsY = compact(s) ? [] : hasVip ? [yMach, yVip, ySvc] : planned ? [yMach] : [yMach, ySvc];
         rowsY.forEach((y) => div("row", fp, { left: px(rx), width: px(rw), top: px(y) }));
         // Room labels sit in the ingress row's free space, clear of the machines.
-        pos.set("room:" + s.id, hasVip ? { x: rx + 12, y: ry + 1.2 } : { x: rx + Math.min(rw * 0.45, 7), y: ry + rh / 2 });
+        pos.set("room:" + s.id, hasVip || service(s.id).length ? { x: rx + rw - 9, y: ry + 1.1 } : { x: rx + Math.min(rw * 0.45, 7), y: ry + rh / 2 });
         const put = (key, i, y, w = 2, h = 2) => { const x = rx + 1 + i * 3; pos.set(key, { x: x + w / 2, y: y + 0.4 + h / 2 }); return { left: px(x), top: px(y + 0.4), width: px(w), height: px(h) }; };
         const ing = ingress(s.id), cs = compute(s.id), mY = compact(s) ? yIng : yMach, m0 = compact(s) ? ing.length : 0;
         ing.forEach((st, i) => els.set("st:" + st.id, div("tile st" + (st.planned ? " planned" : ""), fp, put("st:" + st.id, i, yIng))));
@@ -278,10 +346,17 @@ function build(e) {
           els.set("st:" + v.id, div("tile st vip", fp, { left: px(cx - vw / 2), top: px(yVip + 0.5), width: px(vw), height: px(1.8) }));
           pos.set("st:" + v.id, { x: cx, y: yVip + 1.4 });
         }
-        service(s.id).forEach((o, i) => {
-          const key = o.c ? "c:" + o.c.id : "st:" + o.s.id;
-          els.set(key, div("tile " + (o.c ? "svc" : "st"), fp, put(key, i, ySvc, 2, 1.4)));
-        });
+        const svc = service(s.id);
+        if (svcN) {
+          div("strip svc-strip", fp, { left: px(rx + 0.5), top: px(ySvc + 0.1), width: px(svc.length * 3.9 + 0.6), height: px(2.9) });
+          pos.set("sl:" + s.id, { x: rx + 1.4, y: ySvc + 0.55 });
+          svc.forEach((o, i) => {
+            const key = o.c ? "c:" + o.c.id : "st:" + o.s.id, cx = rx + 1 + i * 3.9;
+            pos.set(key, { x: cx + 1.75, y: ySvc + 0.75 + 0.75 });
+            const t = div("tile " + (o.c ? "svc" : "st"), fp, { left: px(cx), top: px(ySvc + 0.75), width: px(3.5), height: px(1.5) });
+            els.set(key, t);
+          });
+        }
         // Bottom row: this room's Tailscale relays and exit nodes, in a dashed Tailscale strip.
         const ti = tsIn(s.id);
         if (ti.length) {
@@ -292,6 +367,30 @@ function build(e) {
           ti.forEach((o, i) => els.set(o.k, div("tile " + o.cls, fp, put(o.k, i, yTs))));
         }
         ry += rh + PAD;
+      }
+      // Direct services: reached by port, not by hostname. One strip for the internet, one for internal only.
+      if (dnHere) {
+        const rx = bx + PAD;
+        div("room dn-room", fp, { left: px(rx), top: px(ry), width: px(dnW), height: px(dnRoomH) });
+        let y = ry + 0.6;
+        dnGroups.forEach((g) => {
+          const arr = DIRECT.filter((d) => d.g === g), h = dnH(g), q = dnGrid(g);
+          div("strip dn-strip", fp, { left: px(rx + 0.5), top: px(y), width: px(q.per * 3.9 + 0.6), height: px(h) });
+          pos.set("dl:" + DGRP[g].k, { x: rx + 1.4, y: y + 0.55 });
+          arr.forEach((d, i) => {
+            const cx = rx + 1 + (i % q.per) * 3.9, cy = y + 1.15 + Math.floor(i / q.per) * DN_ROW, key = "sv:" + d.id;
+            const t = div("tile dn" + (d.wg ? " wg" : "") + (d.p.length > 6 ? " sm" : ""), fp, { left: px(cx), top: px(cy), width: px(3.5), height: px(1.5) });
+            // No text in the tile: it is inside the scaled plan, so text there shrinks to ~6px. The port is
+            // drawn on the label layer instead, which keeps its size at every zoom.
+            t.title = `${d.n} · ${d.ip} · ${d.p}/${d.pr}`;
+            t.classList.add("hot"); t.addEventListener("click", () => select("sv", d.id));
+            els.set(key, t); pos.set(key, { x: cx + 1.6, y: cy + 0.75 });
+            if (d.st) { els.set("st:" + d.st, t); pos.set("st:" + d.st, pos.get(key)); }
+          });
+          y += h + 0.5;
+        });
+        pos.set("room:direct", { x: rx + dnW - 5, y: ry + 0.5 });
+        ry += dnRoomH + PAD;
       }
       // Tailscale is its own network, so it gets its own room: the tailnet, then every usable exit node.
       if (tsHere) {
@@ -387,8 +486,10 @@ function build(e) {
       for (const st of e.stations.filter((x) => x.site === sid && x.kind === "vip")) label("st:" + st.id, "vip", "", () => select("st", st.id), "rm", bk);
       const kp = pos.get("kube:" + sid);
       if (kp) label("kube:" + sid, "kube-l", `<b>k3s cluster</b>`, () => zoomTo(bk), "d", bk);
+      if (pos.get("sl:" + sid)) label("sl:" + sid, "dl-l sv-l", "<b>Traefik services</b> · by hostname", () => zoomTo(bk), "d", bk);
       for (const c of e.components.filter((x) => serviceSite(e, x) === sid)) label("c:" + c.id, "", "", () => select("c", c.id), "d", bk);
-      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "service" && !nodeIds.has(x.id))) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
+      // A station that is drawn as a direct-service port tile (SeaweedFS) already has its element and tip.
+      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "service" && !nodeIds.has(x.id) && !DIRECT.some((d) => d.st === x.id))) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
     }
   }
   for (const id of ["internet", "wg"]) label("st:" + id, id === "internet" ? "sign" : "", "", () => select("st", id), "o", "");
@@ -398,6 +499,13 @@ function build(e) {
     label("room:tailscale", "rm", "<b>Tailscale</b> · tailnet and third-party exit nodes", () => zoomTo("home:origin"), "rm", "home:origin");
     for (const x of DERP) label("dp:" + x.id, "", "", () => select("dp", x.id), "d", bkOf(e.sites.find((y) => y.id === x.site)));
     for (const x of EXIT_NODES) label("x:" + x.id, "", "", () => select("x", x.id), "d", x.site ? bkOf(e.sites.find((y) => y.id === x.site)) : "home:origin");
+  }
+  if (pos.get("room:direct")) {
+    // Zoom-only: at full-plan scale the room is a few pixels tall and the label would sit on the tiles.
+    label("room:direct", "rm", "<b>Direct services</b> · not behind Traefik", () => zoomTo("home:origin"), "d", "home:origin");
+    [1, 2].filter((g) => pos.get("dl:" + DGRP[g].k)).forEach((g) => label("dl:" + DGRP[g].k, "dl-l", `<b>${DGRP[g].t}</b>`, () => zoomTo("home:origin"), "d", "home:origin"));
+    // The port is the tile's identity, so it stands under the tile; the full record is in the inspector.
+    DIRECT.forEach((d) => label("sv:" + d.id, "pn", `<b>${esc(d.p)}</b>`, () => select("sv", d.id), "d", "home:origin"));
   }
   reanchor();
 }
@@ -454,6 +562,7 @@ function crumb() {
   if (sel) {
     const site = sel.t === "n" ? est.nodes.find((n) => n.id === sel.id)?.site : sel.t === "st" ? est.stations.find((s) => s.id === sel.id)?.site : sel.t === "c" ? serviceSite(est, est.components.find((c) => c.id === sel.id)) : null;
     if (sel.t === "x" || sel.t === "dp") parts.push("Tailscale");
+    if (sel.t === "sv") parts.push("Direct services");
     if (site) parts.push(esc(est.sites.find((s) => s.id === site)?.name || site));
   }
   $("#crumb").innerHTML = parts.join(" › ");
@@ -560,12 +669,15 @@ function declutter() {
   const obst = [...fp.querySelectorAll(".rack,.tile,.kube")].map((d) => box(parseFloat(d.style.left) / U, parseFloat(d.style.top) / U, parseFloat(d.style.width) / U, parseFloat(d.style.height) / U, d.classList.contains("kube") ? k * 0.85 : k));
   // Labels pinned under a drawn thing go before the free ones, so the free ones work around them.
   const rank = (l) => (l.classList.contains("bl") ? 0 : els.get(l.pk)?.style.width ? 1 : l.dataset.lvl === "rm" ? 2 : 3);
-  const all = [...lbs.values()].filter((l) => l.bx != null && !l.hidden && !(l.classList.contains("tip") && !l.classList.contains("alarm")) && !l.classList.contains("ts-l")).sort((a, b) => rank(a) - rank(b) || a.by - b.by || a.bx - b.bx);
+  const all = [...lbs.values()].filter((l) => l.bx != null && !l.hidden && !(l.classList.contains("tip") && !l.classList.contains("alarm")) && !l.classList.contains("ts-l") && !l.classList.contains("dl-l") && l.pk !== "room:direct").sort((a, b) => rank(a) - rank(b) || a.by - b.by || a.bx - b.bx);
   const cover = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) + G) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) + G);
   const outside = (b) => Math.max(0, V.x - b.x) + Math.max(0, b.x + b.w - V.x - V.w) + Math.max(0, V.y - b.y) + Math.max(0, b.y + b.h - V.y - V.h);
   // Labels pinned under a thing ignore the k3s box: it is a container, its racks are what they name.
   const tiles = [...fp.querySelectorAll(".rack,.tile")].map((d) => box(parseFloat(d.style.left) / U, parseFloat(d.style.top) / U, parseFloat(d.style.width) / U, parseFloat(d.style.height) / U));
   const placed = [];
+  // Pinned strip labels never move, so they are obstacles for the labels that do.
+  for (const l of [...lbs.values()].filter((x) => x.bx != null && !x.hidden && x.classList.contains("dl-l")))
+    placed.push({ x: l.bx, y: l.by - (l.offsetHeight * inv) / 2, w: l.offsetWidth * inv, h: l.offsetHeight * inv });
   ov.querySelectorAll(".lead").forEach((d) => d.remove());
   for (const l of all) {
     const w = l.offsetWidth * inv, h = l.offsetHeight * inv, bl = l.classList.contains("bl");
@@ -664,9 +776,17 @@ function inspect() {
     h = `<h2>${esc(s.name)}</h2><p>${esc(s.kind)} · ${esc(s.site || "between buildings")} · ${s.tier}${s.planned ? " · planned" : ""}</p>${s.id === "tailnet" ? `<p>Control server <a href="https://net.2143.me">net.2143.me</a> is served by <b>Traefik</b> <span class="net">${VIP_IP}</span>. Tailnet clients reach Traefik directly for <span class="net">*.ts.2143.me</span>.</p><p>Out to the internet: clients connect peer to peer, through a DERP relay when they cannot. Relays: ${DERP.map((x) => `${esc(x.name)} <span class="st st-${sk(x.state)}">${stateWord(x.state)}</span>`).join(", ")}.</p>` : ""}
       <table><tbody>${hs.map((x) => `<tr><td>${x.from === s.id ? "→ " + esc(x.to) : "← " + esc(x.from)}</td><td>${esc(x.label)}</td><td>${fmtMs(x.latency_ms)}</td><td><span class="st st-${sk(x.state)}">${stateWord(x.state)}</span></td></tr>`).join("") || "<tr><td>No links yet</td></tr>"}</tbody></table>
       <p>Routes: ${e.components.filter((c) => c.via.some((v) => ids.has(v))).map((c) => esc(c.name)).join(", ") || "—"}</p>${hs[0] ? `<p><a href="#row-hop-${esc(hs[0].id)}">Show in table</a></p>` : ""}`;
+    if (s.id === "router") h += `<h3>Port forwards</h3><p>Internet → Verizon forward → MikroTik WAN → dst-nat → target. Both hops are required; one alone fails silently.</p><table><tbody>${DIRECT.filter((d) => d.g === 1).map((d) => `<tr><td class="net">${esc(d.f)}</td><td><span class="net">${esc(d.ip)}</span>:${esc(d.p)}</td><td>${esc(d.n)}</td></tr>`).join("")}</tbody></table>`;
   } else if (sel.t === "dp") {
     const x = DERP.find((y) => y.id === sel.id);
     h = `<h2>DERP relay ${esc(x.name)}</h2><p><span class="st st-${sk(x.state)}">${stateWord(x.state)}</span>${x.ms ? " · " + fmtMs(x.ms) : ""}${x.note ? " · " + esc(x.note) : ""}</p><p>Runs on ${esc(x.where)}. Relays tailnet traffic when two devices cannot connect directly. Status is a fixed sample until pite reports <span class="net">tailscale netcheck</span>.</p>`;
+  } else if (sel.t === "sv") {
+    const d = DIRECT.find((y) => y.id === sel.id);
+    const iface = d.g === 1 ? "the internet, through a port forward" : d.wg ? "the LAN, and the WireGuard tunnel" : "the LAN only";
+    h = `<h2>${esc(d.n)}</h2><p>Listens on <span class="net">${esc(d.ip)}</span> · <span class="net">${esc(d.p)}</span>/${esc(d.pr)}. Reached over ${iface}. Not behind Traefik: no hostname, no certificate.</p>` +
+      (d.g === 1 ? `<p>Path in: internet → Verizon CR1000B (forward <span class="net">${esc(d.f)}</span>) → MikroTik WAN → dst-nat → <span class="net">${esc(d.ip)}</span>.</p>` : "") +
+      (d.wg ? `<p>The DigitalOcean cluster reaches it on <span class="net">wg-remote</span>: an explicit forward allow sits above the tunnel's default deny.</p>` : "") +
+      (d.note ? `<p>${esc(d.note)}</p>` : "");
   } else if (sel.t === "x") {
     const x = EXIT_NODES.find((y) => y.id === sel.id);
     h = `<h2>Exit node ${esc(x.name)}</h2><p><span class="st st-${sk(x.state)}">${stateWord(x.state)}</span> · ${esc(x.where)}</p><p>Usable as a Tailscale exit node. Status is a fixed sample until the tailnet is reported.</p>`;
