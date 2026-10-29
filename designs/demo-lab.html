@@ -85,6 +85,7 @@
 .tile.dn b{font-weight:600;letter-spacing:-.02em;white-space:nowrap}
 .tile.dn.sm b{font-size:.86em}
 .tile.dn.wg{box-shadow:inset 3px 0 0 var(--info)}
+.lb .via{color:var(--muted);font-weight:400}
 .lb.pn{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.66rem;color:var(--fg);border-color:transparent;background:none;padding:0 .1rem}
 .lb.pn b{font-weight:600}
 .lb.dl-l{transform:scale(var(--inv,1)) translate(0,-50%);border-color:transparent;background:none;font-size:.68rem;color:var(--muted)}
@@ -201,10 +202,14 @@ const DERP = [
 const EXIT_NODES = [
   { id: "nas", name: "nas", where: "Home", site: "house", state: "up" },
   { id: "doks-us-nyc", name: "doks-us-nyc", where: "DOKS, DigitalOcean nyc1", site: "nyc1", state: "up" },
-  { id: "mullvad-us", name: "Mullvad US", where: "mullvad-us-vpin-deccam", state: "up" },
-  { id: "mullvad-de", name: "Mullvad DE", where: "Düsseldorf", state: "up" },
-  { id: "mullvad-ee", name: "Mullvad EE", where: "Tallinn", state: "up" },
-  { id: "mullvad-jp", name: "Mullvad JP", where: "Tokyo", state: "up" },
+  // Mullvad exits are tailscale+gluetun pods in vpn-endpoints: `node` is the rack the pod runs on (pods move; this
+  // is a kubectl sample from 2026-10-29). State is the tailnet's view, not the pod's: za is Running but headscale
+  // answers its polls with 404 node not found, so it is not an exit node at all.
+  { id: "mullvad-de", name: "Mullvad DE", where: "Düsseldorf", node: "nas", pod: "de-mullvad", state: "up" },
+  { id: "mullvad-ee", name: "Mullvad EE", where: "Tallinn", node: "big", pod: "ee-mullvad", state: "up" },
+  { id: "mullvad-jp", name: "Mullvad JP", where: "Tokyo", node: "arch", pod: "jp-mullvad", state: "up" },
+  { id: "mullvad-za", name: "Mullvad ZA", where: "South Africa", node: "closet", pod: "za-mullvad", state: "down", note: "Pod is Running 2/2, but headscale no longer knows the node (PollNetMap 404 node not found). Re-enrol it." },
+  { id: "mullvad-us", name: "Mullvad US", where: "mullvad-us-vpin-deccam", state: "up", note: "Advertised on the tailnet, but no pod in vpn-endpoints runs it; where it runs is unknown." },
 ];
 // Direct (non-Traefik) services: the port each binds, and the interface that reaches it. The WAN rows are the
 // router's dst-nat table plus the Verizon forwards (read-only `print`, 2026-10-29); the internal rows are the
@@ -443,6 +448,7 @@ function build(e) {
   const tsWire = (key, a, b) => { if (!a || !b) return; const pts = [a, { x: a.x, y: Math.min(a.y, b.y) }, { x: b.x, y: Math.min(a.y, b.y) }, b].filter((p, i, arr) => !i || p.x !== arr[i - 1].x || p.y !== arr[i - 1].y); cables.set(key, { segs: wire("cable k-tunnel ts-link", pts), pts, len: 0, pkts: [] }); };
   tsWire("ts:inet", pos.get("st:tailnet"), pos.get("st:internet"));
   for (const x of DERP) tsWire("dp:" + x.id, pos.get("dp:" + x.id), pos.get("st:" + x.at));
+  for (const x of EXIT_NODES) if (x.node) tsWire("xn:" + x.id, pos.get("x:" + x.id), pos.get("n:" + x.node));
   for (const c of e.components) {
     const h = e.hops.find((x) => x.id === c.via[c.via.length - 1]);
     const a = h && pos.get("st:" + h.to), b = pos.get("c:" + c.id);
@@ -636,9 +642,11 @@ function update(e) {
   }
   for (const x of EXIT_NODES) {
     const l = lbs.get("x:" + x.id), t = els.get("x:" + x.id); if (!l) continue;
-    l.className = `lb ${l.classList.contains("tip") ? "tip " : ""}s-${sk(x.state)}${x.state !== "up" ? " alarm" : ""}`;
-    l.innerHTML = `${esc(x.name)} <span class="st st-${sk(x.state)}">${stateWord(x.state)}</span>`;
-    t.className = `tile xn s-${sk(x.state)}`;
+    // A hosted exit is only as up as the rack its pod runs on.
+    const rk = x.node && est.nodes.find((n) => n.id === x.node), xs = rk && rk.state !== "up" && x.state === "up" ? rk.state : x.state;
+    l.className = `lb ${l.classList.contains("tip") ? "tip " : ""}s-${sk(xs)}${xs !== "up" ? " alarm" : ""}`;
+    l.innerHTML = `${esc(x.name)} <span class="st st-${sk(xs)}">${stateWord(xs)}</span>${rk ? ` <span class="via">on ${esc(rk.name)}</span>` : ""}`;
+    t.className = `tile xn s-${sk(xs)}`;
   }
   highlight();
   if (sel) inspect();
@@ -751,11 +759,38 @@ function highlight() {
     if (ts) for (const x of EXIT_NODES) els.get("x:" + x.id)?.classList.add("on");
     return;
   }
+  const xn = sel?.t === "x" && EXIT_NODES.find((x) => x.id === sel.id);
+  if (xn) {
+    $("#cam").classList.add("dim");
+    els.get("x:" + xn.id)?.classList.add("on");
+    cables.get("xn:" + xn.id)?.segs.forEach((s) => s.classList.add("on"));
+    for (const k of exitPath(xn).keys) els.get(k)?.classList.add("on");
+    for (const h of exitPath(xn).hops) cables.get(h)?.segs.forEach((s) => s.classList.add("on"));
+    return;
+  }
   if (!sel || sel.t !== "c") return;
   const c = est.components.find((x) => x.id === sel.id);
   els.get("c:" + c.id)?.classList.add("on");
   cables.get("svc:" + c.id)?.segs.forEach((s) => s.classList.add("on"));
   for (const hid of c.via) { const h = est.hops.find((x) => x.id === hid); cables.get(hid)?.segs.forEach((s) => s.classList.add("on")); els.get("st:" + h.from)?.classList.add("on"); els.get("st:" + h.to)?.classList.add("on"); }
+}
+// An exit node's physical way out: the rack its pod runs on, then that rack's site's hops to the internet.
+function exitPath(x) {
+  const n = x.node && est.nodes.find((y) => y.id === x.node);
+  if (!n) return { keys: [], hops: [], names: [], n: null };
+  const keys = ["n:" + n.id], hops = [], names = [n.name];
+  // Walk upstream from the router: router <- verizon <- internet (whichever hops this layout has).
+  let at = "router";
+  if (est.stations.some((s) => s.id === at)) {
+    keys.push("st:" + at); names.push(est.stations.find((s) => s.id === at).name.split(" · ")[0]);
+    for (let i = 0; i < 4; i++) {
+      const h = est.hops.find((y) => y.to === at && y.kind !== "tunnel" && y.kind !== "probe");
+      if (!h) break;
+      hops.push(h.id); at = h.from; keys.push("st:" + at);
+      const st = est.stations.find((s) => s.id === at); names.push(st ? st.name.split(" · ")[0] : at);
+    }
+  }
+  return { keys, hops, names, n };
 }
 function inspect() {
   const e = est, hadX = document.activeElement?.classList.contains("x");
@@ -789,7 +824,12 @@ function inspect() {
       (d.note ? `<p>${esc(d.note)}</p>` : "");
   } else if (sel.t === "x") {
     const x = EXIT_NODES.find((y) => y.id === sel.id);
-    h = `<h2>Exit node ${esc(x.name)}</h2><p><span class="st st-${sk(x.state)}">${stateWord(x.state)}</span> · ${esc(x.where)}</p><p>Usable as a Tailscale exit node. Status is a fixed sample until the tailnet is reported.</p>`;
+    const ep = exitPath(x), st = ep.n && ep.n.state !== "up" ? ep.n.state : x.state;
+    h = `<h2>Exit node ${esc(x.name)}</h2><p><span class="st st-${sk(st)}">${stateWord(st)}</span> · ${esc(x.where)}</p>` +
+      (ep.n ? `<p>Pod <span class="net">vpn-endpoints/${esc(x.pod)}</span> on rack <b>${esc(ep.n.name)}</b> <span class="st st-${sk(ep.n.state)}">${stateWord(ep.n.state)}</span>.</p>` +
+        `<p>Physical path: <b>${esc(x.name)}</b> ⇐ WireGuard ⇐ ${ep.names.map(esc).join(" → ")}</p>`
+        : x.site ? "" : `<p>Physical path unknown.</p>`) +
+      (x.note ? `<p>${esc(x.note)}</p>` : "") + `<p>Status is a fixed sample until the tailnet is reported.</p>`;
   } else {
     const c = e.components.find((x) => x.id === sel.id);
     const outs = e.outages.filter((o) => o.id === c.id);
