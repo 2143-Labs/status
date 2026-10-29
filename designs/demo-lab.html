@@ -75,7 +75,9 @@
 .net{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.95em;color:var(--fg)}
 .tile.st.ts{border:2px solid var(--info);border-radius:50%;background:color-mix(in srgb,var(--info) 18%,var(--bg))}
 .room.ts-room{border-color:var(--info);border-style:dashed}
-.tile.xn{border-radius:50%;border:2px solid var(--ok);background:color-mix(in srgb,var(--ok) 14%,var(--bg))}
+/* Exit nodes are purple triangles (Tailscale purple, like the tunnels). The triangle is a ::before so the tile box keeps its hover outline and selected glow. */
+.tile.xn{border:0;background:none;border-radius:2px}
+.tile.xn::before{content:"";position:absolute;inset:0;background:var(--info);clip-path:polygon(50% 6%,95% 92%,5% 92%)}
 .lb.tip:not(.alarm){z-index:5;transform:scale(var(--inv,1)) translate(-50%,0);box-shadow:0 2px 6px color-mix(in srgb,var(--fg) 25%,transparent)}
 .hot{cursor:pointer}.hot:hover{outline:2px solid var(--accent);outline-offset:1px}
 .dn-room{border-color:color-mix(in srgb,var(--fg) 35%,var(--bg))}
@@ -97,7 +99,7 @@
 .ts-strip{position:absolute;border:1.5px dashed var(--info);border-radius:6px;background:color-mix(in srgb,var(--info) 5%,transparent)}
 .tile.dp{border:2px dashed var(--info);border-radius:3px;transform:rotate(45deg) scale(.8);background:color-mix(in srgb,var(--info) 12%,var(--bg))}
 .tile.dp.s-down,.tile.dp.s-unknown{border-color:var(--bad);background:var(--panel)}
-.tile.xn.s-down,.tile.xn.s-unknown{border-color:var(--bad);background:var(--panel)}
+.tile.xn.s-down::before,.tile.xn.s-unknown::before{background:var(--bad)}
 /* Provider identity colours. Chosen in OKLCH: one lightness per mode (ink L .45 light / .80 dark, tint L .95 / .28)
    so Home and DigitalOcean carry equal visual weight and differ only in hue; hues sit away from the status hues
    (ok/warn/bad/accent) so a building never reads as a state. ?scheme=map|slate|mono */
@@ -200,8 +202,8 @@ const DERP = [
 ];
 // Exit nodes; `site` set = it runs in that room, null = a third party (Mullvad), drawn in the Tailscale room.
 const EXIT_NODES = [
-  { id: "nas", name: "nas", where: "Home", site: "house", state: "up" },
-  { id: "doks-us-nyc", name: "doks-us-nyc", where: "DOKS, DigitalOcean nyc1", site: "nyc1", state: "up" },
+  { id: "nas", name: "nas", where: "Home", site: "house", node: "nas", state: "up" },
+  { id: "doks-us-nyc", name: "doks-us-nyc", where: "DOKS, DigitalOcean nyc1", site: "nyc1", at: "doks", state: "up" },
   // Mullvad exits are tailscale+gluetun pods in vpn-endpoints: `node` is the rack the pod runs on (pods move; this
   // is a kubectl sample from 2026-10-29). State is the tailnet's view, not the pod's: za is Running but headscale
   // answers its polls with 404 node not found, so it is not an exit node at all.
@@ -448,7 +450,7 @@ function build(e) {
   const tsWire = (key, a, b) => { if (!a || !b) return; const pts = [a, { x: a.x, y: Math.min(a.y, b.y) }, { x: b.x, y: Math.min(a.y, b.y) }, b].filter((p, i, arr) => !i || p.x !== arr[i - 1].x || p.y !== arr[i - 1].y); cables.set(key, { segs: wire("cable k-tunnel ts-link", pts), pts, len: 0, pkts: [] }); };
   tsWire("ts:inet", pos.get("st:tailnet"), pos.get("st:internet"));
   for (const x of DERP) tsWire("dp:" + x.id, pos.get("dp:" + x.id), pos.get("st:" + x.at));
-  for (const x of EXIT_NODES) if (x.node) tsWire("xn:" + x.id, pos.get("x:" + x.id), pos.get("n:" + x.node));
+  for (const x of EXIT_NODES) if (x.node || x.at) tsWire("xn:" + x.id, pos.get("x:" + x.id), pos.get(x.node ? "n:" + x.node : "st:" + x.at));
   for (const c of e.components) {
     const h = e.hops.find((x) => x.id === c.via[c.via.length - 1]);
     const a = h && pos.get("st:" + h.to), b = pos.get("c:" + c.id);
@@ -777,10 +779,11 @@ function highlight() {
 // An exit node's physical way out: the rack its pod runs on, then that rack's site's hops to the internet.
 function exitPath(x) {
   const n = x.node && est.nodes.find((y) => y.id === x.node);
-  if (!n) return { keys: [], hops: [], names: [], n: null };
-  const keys = ["n:" + n.id], hops = [], names = [n.name];
-  // Walk upstream from the router: router <- verizon <- internet (whichever hops this layout has).
-  let at = "router";
+  if (!n && !x.at) return { keys: [], hops: [], names: [], n: null };
+  const keys = n ? ["n:" + n.id] : [], hops = [], names = n ? [n.name] : [];
+  // Walk upstream to the internet: a home rack goes out via the router (<- verizon <- internet); a cloud
+  // exit starts at its own station (doks <- DO load balancer <- internet).
+  let at = n ? "router" : x.at;
   if (est.stations.some((s) => s.id === at)) {
     keys.push("st:" + at); names.push(est.stations.find((s) => s.id === at).name.split(" · ")[0]);
     for (let i = 0; i < 4; i++) {
@@ -826,9 +829,9 @@ function inspect() {
     const x = EXIT_NODES.find((y) => y.id === sel.id);
     const ep = exitPath(x), st = ep.n && ep.n.state !== "up" ? ep.n.state : x.state;
     h = `<h2>Exit node ${esc(x.name)}</h2><p><span class="st st-${sk(st)}">${stateWord(st)}</span> · ${esc(x.where)}</p>` +
-      (ep.n ? `<p>Pod <span class="net">vpn-endpoints/${esc(x.pod)}</span> on rack <b>${esc(ep.n.name)}</b> <span class="st st-${sk(ep.n.state)}">${stateWord(ep.n.state)}</span>.</p>` +
-        `<p>Physical path: <b>${esc(x.name)}</b> ⇐ WireGuard ⇐ ${ep.names.map(esc).join(" → ")}</p>`
-        : x.site ? "" : `<p>Physical path unknown.</p>`) +
+      (ep.names.length ? (ep.n ? `<p>${x.pod ? `Pod <span class="net">vpn-endpoints/${esc(x.pod)}</span> on rack` : "Runs on the rack itself:"} <b>${esc(ep.n.name)}</b> <span class="st st-${sk(ep.n.state)}">${stateWord(ep.n.state)}</span>.</p>` : "") +
+        `<p>Physical path: ${ep.names[0] === x.name ? "" : `<b>${esc(x.name)}</b> ⇐ ${x.pod ? "WireGuard ⇐ " : ""}`}${ep.names.map((v, i) => (i || ep.names[0] !== x.name ? esc(v) : `<b>${esc(v)}</b>`)).join(" → ")}</p>`
+        : `<p>Physical path unknown.</p>`) +
       (x.note ? `<p>${esc(x.note)}</p>` : "") + `<p>Status is a fixed sample until the tailnet is reported.</p>`;
   } else {
     const c = e.components.find((x) => x.id === sel.id);
