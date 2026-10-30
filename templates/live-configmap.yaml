@@ -1,0 +1,11 @@
+# The snapshot script, run by the deployment's `live` sidecar every live.intervalSeconds.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: status-design-live
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: status-design
+data:
+  estate_snapshot.py: |
+{{ .Files.Get "scripts/estate_snapshot.py" | indent 4 }}

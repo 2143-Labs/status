@@ -1,7 +1,10 @@
 // estate-core.js — shared plumbing for designs/demo-*.html.
-// Data comes from estate-sim.js (default) or estate-real.json (?source=snapshot);
+// Data comes from estate-live.json (default, refreshed every 30 s), estate-real.json
+// (?source=snapshot) or estate-sim.js (?source=sim, or any simulator parameter);
 // the contract is documented at the top of estate-sim.js.
 import { simulate, SCENARIOS, LAYOUTS } from "./estate-sim.js";
+
+const LIVE_EVERY_S = 30;
 
 export function params() {
   const q = new URLSearchParams(location.search);
@@ -18,7 +21,8 @@ export function params() {
     seed: int(q.get("seed"), 1),
     speed,
     t: q.has("t") ? Math.max(0, int(q.get("t"), 0)) : null,
-    source: q.get("source") === "snapshot" ? "snapshot" : "sim",
+    source: ["sim", "snapshot", "live"].includes(q.get("source")) ? q.get("source")
+      : (q.has("scenario") || q.has("seed") || q.has("t") || q.has("speed")) ? "sim" : "live",
     plain: q.has("plain"),
     layout,
   };
@@ -35,6 +39,39 @@ export async function start(onEstate) {
     onEstate(e);
   };
 
+  if (p.source === "live") {
+    const getJson = async (url) => {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    };
+    const load = async () => {
+      try {
+        const e = await getJson("estate-live.json");
+        e.frozen = true; // real data: no simulated per-day replay (Diorama)
+        emit(e);
+        return;
+      } catch {}
+      if (current && current.source === "live") { // keep the last good live data, flag it
+        emit({ ...current, load_error: "live feed unreachable, showing the last data received" });
+        return;
+      }
+      try {
+        const e = await getJson("estate-real.json");
+        e.frozen = true;
+        e.load_error = "live feed unavailable, showing the committed snapshot";
+        emit(e);
+        return;
+      } catch {}
+      const e = simulate({ seed: p.seed, scenario: "normal", elapsed: 0, layout: p.layout });
+      e.load_error = "live feed unavailable, showing simulated data";
+      emit(e);
+    };
+    await load();
+    timer = setInterval(() => { if (!stopped && !document.hidden) load(); }, LIVE_EVERY_S * 1000);
+    return { stop() { stopped = true; clearInterval(timer); }, estate: () => current };
+  }
+
   if (p.source === "snapshot") {
     try {
       const res = await fetch("estate-real.json", { cache: "no-store" });
@@ -44,7 +81,7 @@ export async function start(onEstate) {
       emit(e);
     } catch {
       const e = simulate({ seed: p.seed, scenario: "normal", elapsed: 0, layout: p.layout });
-      e.load_error = "estate-real.json not available";
+      e.load_error = "estate-real.json not available, showing simulated data";
       emit(e);
     }
     return { stop() { stopped = true; }, estate: () => current };
@@ -137,7 +174,7 @@ export function renderPlain(e, el) {
   const comps = e.components.map((c) => `<tr id="row-component-${esc(c.id)}"><th scope="row">${esc(c.name)}</th><td>${stateBadge(c.state)}</td><td>${fmtMs(c.latency_ms)}</td><td>${c.uptime ? c.uptime["30d"] + "%" : "—"}</td><td>${c.cert_days ?? "—"}</td><td>${c.group === "web" ? fmtAge(e.sample_age_s) : fmtAge(e.home_age_s)}</td></tr>`).join("");
   const nodes = e.nodes.map((n) => `<tr id="row-node-${esc(n.id)}"><th scope="row">${esc(n.name)}</th><td>${esc(n.site)}</td><td>${esc(n.role)}</td><td>${n.lan_ip ? esc(n.lan_ip) : "—"}${n.public_ip_locked ? ' <span class="chip locked">Sign in to reveal</span>' : ""}</td><td>${fmtPct(n.cpu_pct)}</td><td>${fmtPct(n.ram_pct)}</td><td>${fmtPct(n.disk_pct)}</td><td>${stateBadge(n.state)}</td><td>${age(n)}</td></tr>`).join("");
   const hops = e.hops.map((h) => `<tr id="row-hop-${esc(h.id)}"><th scope="row">${esc(hosts[h.from] || h.from)} → ${esc(hosts[h.to] || h.to)}</th><td>${esc(h.label)}</td><td>${fmtMs(h.latency_ms)}</td><td>${stateBadge(h.state)}</td></tr>`).join("");
-  const note = e.load_error ? `<p class="plain-note">${esc(e.load_error)} — showing simulated data.</p>` : "";
+  const note = e.load_error ? `<p class="plain-note">${esc(e.load_error)}.</p>` : "";
   el.innerHTML = `${head}${note}
 <table><caption>Components</caption><thead><tr><th scope="col">Name</th><th scope="col">State</th><th scope="col">Latency</th><th scope="col">30 d uptime</th><th scope="col">Cert days</th><th scope="col">Reported</th></tr></thead><tbody>${comps}</tbody></table>
 <table><caption>Nodes</caption><thead><tr><th scope="col">Name</th><th scope="col">Site</th><th scope="col">Role</th><th scope="col">LAN IP</th><th scope="col">CPU</th><th scope="col">RAM</th><th scope="col">Disk</th><th scope="col">State</th><th scope="col">Reported</th></tr></thead><tbody>${nodes}</tbody></table>
@@ -154,7 +191,7 @@ export function scenarioBar(el) {
     }
     location.search = q.toString();
   };
-  const snap = p.source === "snapshot";
+  const snap = p.source !== "sim";
   const shownLayout = snap && current ? current.layout : p.layout;
   const plainHref = (() => {
     const q = new URLSearchParams(location.search);
@@ -169,6 +206,7 @@ export function scenarioBar(el) {
 <span class="toggle" role="group" aria-label="Layout">${LAYOUTS.map((l) => `<button type="button" data-layout="${l}" aria-pressed="${l === shownLayout}"${snap ? " disabled" : ""}>${l === "today" ? "Today" : "Target"}</button>`).join("")}</span>
 <label>Seed <input data-k="seed" type="number" min="1" value="${p.seed}" size="4"${snap ? " disabled" : ""}></label>
 <label>Speed <select data-k="speed"${snap ? " disabled" : ""}>${[1, 10, 60, 600].map((s) => `<option value="${s}"${s === p.speed ? " selected" : ""}>${s}×</option>`).join("")}</select></label>
+${snap ? '<a href="?source=sim">Simulate scenarios</a>' : '<a href="?">Live data</a>'}
 <a href="${esc(plainHref)}">Plain view</a>
 <span class="clock" aria-live="off"></span>`;
   el.querySelectorAll("select,input").forEach((c) => c.addEventListener("change", () => go({ [c.dataset.k]: c.value, t: null })));
@@ -176,7 +214,9 @@ export function scenarioBar(el) {
   const clock = el.querySelector(".clock");
   const upd = () => {
     if (!current) return;
-    const src = current.source === "snapshot" ? "snapshot" : `${current.scenario} · t+${Math.round(current.generated - 1792800000 + (current.sample_age_s || 0))} s`;
+    const src = current.source === "live" ? `live · data ${fmtAge(Math.max(0, Math.round(Date.now() / 1000 - current.generated)))}`
+      : current.source === "snapshot" ? "snapshot"
+      : `${current.scenario} · t+${Math.round(current.generated - 1792800000 + (current.sample_age_s || 0))} s`;
     clock.textContent = `${src} · ${new Date(current.generated * 1000).toISOString().slice(11, 19)} UTC`;
   };
   upd();
