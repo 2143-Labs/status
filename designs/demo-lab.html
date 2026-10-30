@@ -1,0 +1,972 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo · Lab — 2143 Labs status</title>
+<link rel="stylesheet" href="estate-core.css">
+<style>
+#stage{max-width:96rem;margin:0 auto;padding:1rem}
+.head{display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;align-items:baseline;margin:.3rem 0 .3rem}
+.head h1{font-size:1.4rem;margin:0}.head span{color:var(--muted)}
+.crumb{font-size:.85rem;color:var(--muted);margin:0 0 .4rem}
+.crumb button{font:inherit;color:var(--accent);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 20rem;gap:1rem;align-items:start}
+.view{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.cam{position:relative;transform-origin:0 0;transition:transform .4s ease}
+.cam.wheel{transition:none}
+/* Wheel-zoom detail fades in and out rather than popping. */
+.lb.wz{animation:wzin .18s ease}
+@keyframes wzin{from{opacity:0}to{opacity:1}}
+.zhint{position:absolute;right:.6rem;bottom:.5rem;font-size:.72rem;color:var(--muted);background:color-mix(in srgb,var(--bg) 85%,transparent);padding:.1rem .4rem;border-radius:4px;pointer-events:none}
+/* The 2D isometric floor plan: carries no text. */
+.floorplan{position:absolute;left:0;top:0;transform-origin:0 0;transform:matrix(.866,.5,-.866,.5,0,0);transition:transform .4s ease}
+/* Zoomed in, the plan lies flat (top-down) so rows and tiles read as a straight floor plan. */
+.floorplan.flat{transform:none}
+.floorplan.flat .bld .front,.floorplan.flat .bld .frontr{display:none}
+.ov{transition:opacity .15s ease}.ov.moving{opacity:0}
+.street{position:absolute;background:repeating-linear-gradient(90deg,var(--panel) 0 18px,var(--code) 18px 36px);border:1px solid var(--line)}
+.bld{position:absolute;border:2px solid var(--fg);background:var(--panel)}
+.bld .front{position:absolute;left:0;right:0;bottom:-2px;height:0;box-shadow:0 10px 0 0 color-mix(in srgb,var(--fg) 45%,var(--bg))}
+.bld .frontr{position:absolute;top:0;bottom:0;right:-2px;width:0;box-shadow:10px 0 0 0 color-mix(in srgb,var(--fg) 30%,var(--bg))}
+.bld.planned,.room.planned{border-style:dashed;background:transparent;border-color:var(--line);color:var(--muted);opacity:.55}
+.bld.planned .front,.bld.planned .frontr{display:none}
+.room{position:absolute;border:1px solid var(--line);background:var(--bg);
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:24px 24px}
+.row{position:absolute;left:0;right:0;border-top:1px dashed var(--line)}
+.tile{position:absolute;border:1px solid var(--line);border-radius:3px;background:var(--panel)}
+.tile.st{background:color-mix(in srgb,var(--accent) 16%,var(--bg))}
+.tile.st.planned{background:transparent;border-style:dashed;opacity:.55}
+.tile.svc{background:var(--panel)}
+.rack{position:absolute;border:1px solid var(--fg);background:var(--panel);display:flex;flex-direction:column;justify-content:flex-end;gap:2px;padding:3px}
+.rack i{display:block;height:4px;border-radius:1px;background:var(--ok)}
+/* A machine outside the feed (vpin): dashed, and its bars are grey because nothing reports its load. */
+.rack.extra{border-style:dashed}.rack.extra i{background:var(--line)}.rack i.w{background:var(--warn)}.rack i.b{background:var(--bad)}
+.rack.s-unknown{background:repeating-linear-gradient(45deg,var(--bg) 0 4px,var(--panel) 4px 8px)}
+.rack.s-degraded{border-color:var(--warn);border-width:2px}.rack.s-down{border-color:var(--bad);border-width:2px}
+.cable{position:absolute;background:var(--fg);opacity:.7;contain:layout paint}
+.cable.k-public{background:var(--accent);opacity:.9}
+/* Site-to-site WireGuard (DO ⇄ home): dashed purple, labelled on the link. */
+.cable.k-tunnel{background:repeating-linear-gradient(90deg,var(--info) 0 6px,transparent 6px 10px)}
+.cable.k-tunnel.v{background:repeating-linear-gradient(180deg,var(--info) 0 6px,transparent 6px 10px)}
+.cable.ts-link{display:none}.cable.ts-link.on{display:block;opacity:1}
+.legend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.75rem;color:var(--muted);margin:.2rem 0 .4rem}
+.legend i{position:static;display:inline-block;width:1.8em;height:3px;vertical-align:middle;margin-right:.4em}
+.legend .lg-ts{color:var(--info);margin-right:.35em;font-weight:700}
+.legend i.kube{height:.8em;width:1.2em}
+.cable.c-degraded{background:var(--warn)!important;opacity:1}.cable.c-down{background:var(--bad)!important;opacity:1}
+.pkt{position:absolute;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--fg);will-change:transform}
+.dim .rack:not(.on),.dim .tile:not(.on),.dim .cable:not(.on),.dim .pkt{opacity:.35}
+/* Flat overlay: labels are untransformed buttons and the Tab order. */
+.ov{position:absolute;inset:0;pointer-events:none}
+.ov>*{pointer-events:auto}
+.lb{position:absolute;transform-origin:0 0;transform:scale(var(--inv,1)) translate(-50%,-50%);font:inherit;font-size:.72rem;line-height:1.2;text-align:center;white-space:nowrap;
+  border:1px solid var(--line);border-radius:5px;background:color-mix(in srgb,var(--bg) 88%,transparent);color:var(--fg);padding:.05rem .3rem;cursor:pointer}
+.lb b{font-weight:600}
+.lb.bl{font-size:1.15rem;font-weight:800;letter-spacing:.01em;padding:.15rem .55rem;border-width:2px;border-color:var(--fg);background:var(--bg);box-shadow:3px 3px 0 color-mix(in srgb,var(--fg) 30%,var(--bg));z-index:2;transform:scale(var(--inv,1)) translate(-50%,-100%)}
+.lb.planned{color:var(--muted);font-weight:400;border-color:var(--line)}
+.lb.bl.planned{font-size:.85rem;font-weight:500;border-width:1px;box-shadow:none;background:color-mix(in srgb,var(--bg) 88%,transparent)}
+.lb.rm{font-size:.72rem;color:var(--muted)}
+.lb.rm b{color:var(--fg)}
+.lb.s-down{border-color:var(--bad)}.lb.s-degraded{border-color:var(--warn)}
+.lb.sign{font-weight:600}
+.kube{position:absolute;border:1.5px solid var(--accent);border-radius:4px;background:color-mix(in srgb,var(--accent) 9%,transparent)}
+.tile.st.vip{border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 22%,var(--bg))}
+.cable.k-vip{background:var(--accent);opacity:.9}
+.cable.k-route{background:repeating-linear-gradient(90deg,var(--accent) 0 4px,transparent 4px 8px);opacity:.8}
+.cable.k-route.v{background:repeating-linear-gradient(180deg,var(--accent) 0 4px,transparent 4px 8px)}
+.lb.vip{font-weight:600;border-color:var(--accent);color:var(--fg)}
+.lead{position:absolute;width:0;border-left:1px solid var(--muted);pointer-events:none}
+.lead::before{content:"";position:absolute;left:-4px;top:-1px;border:4px solid transparent;border-bottom:6px solid var(--muted);border-top:0}
+.ov.moving .lead{opacity:0}
+.lb.kube-l{color:var(--accent);border-color:var(--accent)}
+.net{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.95em;color:var(--fg)}
+.tile.st.ts{border:2px solid var(--info);border-radius:50%;background:color-mix(in srgb,var(--info) 18%,var(--bg))}
+/* Exit nodes: an outlined Tailscale-purple triangle (evenodd clip cuts the inside out), drawn under the machine that
+   hosts it. The triangle is a ::before so the tile box keeps its hover outline and selected glow. */
+.tile.xn{border:0;background:none;border-radius:2px}
+.tile.xn::before{content:"";position:absolute;inset:0;background:var(--info);clip-path:polygon(evenodd,50% 4%,97% 94%,3% 94%,50% 4%,50% 30%,22% 80%,78% 80%,50% 30%)}
+.tile.xn.nohost::before{opacity:.55}
+/* The short dashed link from an exit node or relay up to the machine it runs on. */
+.cable.xl{opacity:.75}
+.lb.tip:not(.alarm){z-index:5;transform:scale(var(--inv,1)) translate(-50%,0);box-shadow:0 2px 6px color-mix(in srgb,var(--fg) 25%,transparent)}
+.hot{cursor:pointer}.hot:hover{outline:2px solid var(--accent);outline-offset:1px}
+.dn-room{border-color:color-mix(in srgb,var(--fg) 35%,var(--bg))}
+.strip{position:absolute;border:1.5px dashed color-mix(in srgb,var(--fg) 40%,var(--bg));border-radius:6px;background:color-mix(in srgb,var(--fg) 3%,transparent)}
+.tile.dn,.tile.svc{display:flex;align-items:center;justify-content:center;font:inherit;font-size:.62rem;background:var(--panel);overflow:hidden}
+.tile.svc b{font-weight:600;letter-spacing:-.02em;white-space:nowrap;font-size:.92em}
+.tile.dn b{font-weight:600;letter-spacing:-.02em;white-space:nowrap}
+.tile.dn.sm b{font-size:.86em}
+.tile.dn.wg{box-shadow:inset 3px 0 0 var(--info)}
+.lb .via{color:var(--muted);font-weight:400}
+.lb.pn{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.66rem;color:var(--fg);border-color:transparent;background:none;padding:0 .1rem}
+.lb.pn b{font-weight:600}
+.lb.dl-l{transform:scale(var(--inv,1)) translate(0,-50%);border-color:transparent;background:none;font-size:.68rem;color:var(--muted)}
+.lb.dl-l b{color:var(--fg)}
+.lb.sv-l b{color:var(--accent)}
+.insp h3{font-size:.82rem;margin:.6rem 0 .2rem}
+.tile.dp{border:2px dashed var(--info);border-radius:3px;transform:rotate(45deg) scale(.8);background:color-mix(in srgb,var(--info) 12%,var(--bg))}
+.tile.dp.s-down,.tile.dp.s-unknown{border-color:var(--bad);background:var(--panel)}
+.tile.xn.s-down::before,.tile.xn.s-unknown::before{background:var(--bad)}
+/* Provider identity colours. Chosen in OKLCH: one lightness per mode (ink L .45 light / .80 dark, tint L .95 / .28)
+   so Home and DigitalOcean carry equal visual weight and differ only in hue; hues sit away from the status hues
+   (ok/warn/bad/accent) so a building never reads as a state. ?scheme=map|slate|mono */
+:root{--home-ink:#605612;--home-tint:#f3efd9;--do-ink:#006173;--do-tint:#d9f4fb}
+:root[data-scheme=slate]{--home-ink:#833f27;--home-tint:#ffe7dd;--do-ink:#295b77;--do-tint:#e0f2fd}
+:root[data-scheme=mono]{--home-ink:var(--fg);--home-tint:var(--bg);--do-ink:var(--fg);--do-tint:var(--bg)}
+@media (prefers-color-scheme:dark){
+  :root{--home-ink:#cabf7f;--home-tint:#2c2918;--do-ink:#7acce0;--do-tint:#172d32}
+  :root[data-scheme=slate]{--home-ink:#f6a88d;--home-tint:#38231c;--do-ink:#92c6e5;--do-tint:#1d2b33}
+  :root[data-scheme=mono]{--home-ink:var(--fg);--home-tint:var(--bg);--do-ink:var(--fg);--do-tint:var(--bg)}
+}
+.p-home{--ink:var(--home-ink);--tint:var(--home-tint)}.p-do{--ink:var(--do-ink);--tint:var(--do-tint)}
+.bld.p-home:not(.planned),.bld.p-do:not(.planned){border-color:var(--ink)}
+.bld.p-home .front,.bld.p-do .front{box-shadow:0 10px 0 0 color-mix(in srgb,var(--ink) 55%,var(--bg))}
+.bld.p-home .frontr,.bld.p-do .frontr{box-shadow:10px 0 0 0 color-mix(in srgb,var(--ink) 35%,var(--bg))}
+.lb.bl.p-home:not(.planned),.lb.bl.p-do:not(.planned){color:var(--ink);background:var(--tint);border-color:var(--ink);box-shadow:3px 3px 0 color-mix(in srgb,var(--ink) 35%,var(--bg))}
+.head select{font:inherit;font-size:.8rem;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px}
+.insp{position:sticky;top:3.2rem;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:.7rem .8rem;font-size:.85rem;max-height:calc(100vh - 4rem);overflow:auto}
+.insp h2{font-size:1rem;margin:0 0 .3rem}
+.insp .x{float:right;font:inherit;background:none;border:1px solid var(--line);border-radius:4px;color:var(--fg);cursor:pointer}
+.insp table{width:100%;border-collapse:collapse;font-size:.78rem}.insp td{padding:.1rem .2rem;border-bottom:1px solid var(--line)}
+.ub{display:grid;grid-template-columns:2.4rem 1fr 2.6rem;gap:.2rem .4rem;align-items:center;margin:.4rem 0}
+.ub span{height:.45rem;background:var(--line);border-radius:2px;overflow:hidden}.ub i{display:block;height:100%;background:var(--ok)}.ub i.w{background:var(--warn)}.ub i.b{background:var(--bad)}
+.pack{display:flex;height:1rem;border:1px solid var(--line);border-radius:3px;overflow:hidden;margin:.3rem 0}
+.pack i{border-right:1px solid var(--bg);background:color-mix(in srgb,var(--accent) 35%,var(--bg))}
+.days{display:grid;grid-template-columns:repeat(90,1fr);gap:1px;height:1.2rem;margin:.3rem 0}
+.days i{background:var(--ok)}.days i.m{background:var(--warn)}.days i.x{background:var(--bad)}
+.moved{color:var(--info)}
+@media (max-width:1000px){.wrap{grid-template-columns:1fr}.insp{position:static;max-height:none}}
+@media (prefers-reduced-motion:reduce){.cam,.floorplan{transition:none}.pkt{display:none}}
+</style>
+</head>
+<body>
+<div id="scenario-bar"></div>
+<p id="notice" class="mode-notice" hidden></p>
+<main id="stage" aria-describedby="plain-h">
+  <div class="head"><h1>Lab</h1><span id="sum"></span><span id="ages"></span><label>Colours <select id="scheme"><option value="map">Map: earth / sea</option><option value="slate">Clay / slate</option><option value="mono">Mono</option></select></label></div>
+  <p class="crumb" id="crumb"></p>
+  <p class="legend"><span><i class="cable k-public"></i>Internet</span><span><i class="cable k-lan"></i>Local network</span><span><i class="cable k-tunnel"></i>Encrypted tunnel (WireGuard / Tailscale)</span><span><i class="kube"></i>k3s cluster</span><span><b class="lg-ts">△</b>Tailscale exit node</span><span><b class="lg-ts">◇</b>DERP relay</span></p>
+  <div class="wrap">
+    <div class="view" id="view"><div class="cam" id="cam"><div class="floorplan" id="fp" aria-hidden="true"></div><div class="ov" id="ov"></div></div></div>
+    <aside class="insp" id="insp" aria-live="polite"><p>Each building is a provider, each room a region. Top row: ingress. Middle: racks (machines) and compute. Bottom: services. Select anything to inspect; Enter on a building zooms in; scroll to zoom anywhere, drag to pan; Esc steps back out.</p></aside>
+  </div>
+</main>
+<section id="plain" class="plain" aria-labelledby="plain-h"><h2 id="plain-h">All data as tables</h2></section>
+<noscript><p>This view needs JavaScript. <a href="live-normal.html">Plain status page</a>.</p></noscript>
+<script type="module">
+import { start, renderPlain, scenarioBar, mountModes, stateWord, fmtBytes, fmtPct, fmtMs, fmtAge, esc } from "./estate-core.js";
+
+const $ = (s) => document.querySelector(s);
+const stage = $("#stage"), plain = $("#plain"), fp = $("#fp"), ov = $("#ov"), cam = $("#cam"), insp = $("#insp");
+const mode = mountModes({ stage, plain, notice: $("#notice") });
+scenarioBar($("#scenario-bar"));
+// Provider colour scheme, from ?scheme= (default map); the picker rewrites the URL so a link keeps it.
+{
+  const q = new URLSearchParams(location.search), pick = $("#scheme");
+  const set = (v) => { v = ["map", "slate", "mono"].includes(v) ? v : "map"; document.documentElement.dataset.scheme = v; pick.value = v; };
+  set(q.get("scheme"));
+  pick.addEventListener("change", () => { set(pick.value); q.set("scheme", pick.value); history.replaceState(null, "", "?" + q); });
+}
+const provCls = (pid) => (pid === "home" ? " p-home" : pid === "do" ? " p-do" : "");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+const sk = (s) => (["up", "degraded", "down"].includes(s) ? s : "unknown");
+const grade = (p) => (p >= 90 ? "b" : p >= 75 ? "w" : "");
+// Node network rates are bytes per second (rate(node_network_*_bytes_total[5m])).
+const bps = (n) => (n == null ? "—" : fmtBytes(n) + "/s");
+const net = (rx, tx) => `↓${bps(rx)} ↑${bps(tx)}`;
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+
+// What a room holds, in words: WAN, machines and hostnames, clusters, droplets, edge nodes.
+// Home address plan (RFC 1918, safe to publish): Verizon LAN, internal clients, Traefik VIP pool.
+const SUBNET = { verizon: "192.168.0.0/24", lan: "192.168.5.0/24", vip: "192.168.6.0/24" }, VIP_IP = "192.168.6.6";
+function roomSummary(e, st) {
+  if (st.id === "isp-lan") return `<span class="net">${SUBNET.verizon}</span>`;
+  if (st.id === "house") return `<span class="net">${SUBNET.lan}</span>`;
+  return "";
+}
+
+const U = 24;                          // px per tile in floor-plan space
+const SITE_ORDER = ["isp-lan", "house", "nyc1", "tor1", "ash", "do-edge"];
+const ROW_H = 3, PAD = 1, GAP = 3;     // tiles
+let est = null, built = "", sel = null, zoom = null, OX = 0, OY = 0;
+// Free camera from the mouse wheel, on top of the fitted view: extra scale k (1 = fitted) and a pan in view px.
+const free = { k: 1, x: 0, y: 0 };
+const K_MAX = 6, K_DETAIL = 1.7;   // beyond K_DETAIL the whole plan shows its detail labels, as a building zoom does
+const pos = new Map();                 // entity key -> {x,y} tile centre in floor-plan space
+const els = new Map();                 // entity key -> floor-plan element
+const lbs = new Map();                 // entity key -> overlay button
+const cables = new Map();              // hop id -> {segs, pts, len, pkts}
+const bbox = new Map();                // provider id -> {x,y,w,h}
+const prevNode = new Map(), movedFrom = new Map();
+
+// Zoomed out: isometric. Zoomed into a building: flat top-down (?flat=0 keeps iso when zoomed, for comparison).
+const FLAT_ZOOM = new URLSearchParams(location.search).get("flat") !== "0";
+// Tailscale exit nodes, from `tailscale exit-node list` on 2026-10-28. Offline nodes are not usable, so not listed.
+// The estate feed has no tailnet data yet; status here is fixed until pite reports `tailscale status --json`.
+// DERP relays, from `tailscale debug derp-map` + `tailscale netcheck` on 2026-10-28, and /derp/probe (both 200).
+// Fixed until pite reports netcheck. `site` is the room it is drawn in; `at` is the station it runs behind.
+// derp-r answers /derp/probe but not STUN, so clients cannot measure it: up, latency unmeasured.
+const DERP = [
+  { id: "embedded", name: "Embedded DERP", where: "headscale in the home k3s cluster, behind Traefik", site: "house", at: "traefik", state: "up", ms: 4.4 },
+  { id: "derp-r", name: "derp-r", where: "DOKS, DigitalOcean nyc1", site: "nyc1", at: "doks", state: "up", note: "relays; STUN gets no reply, so latency is not measured" },
+];
+// Exit nodes; `site` set = it runs in that room (under `node`, or under station `at`); no site = host unknown,
+// drawn in the margin beside the tailnet.
+const EXIT_NODES = [
+  { id: "nas", name: "nas", where: "Home", site: "house", node: "nas", state: "up" },
+  { id: "doks-us-nyc", name: "doks-us-nyc", where: "DOKS, DigitalOcean nyc1", site: "nyc1", at: "doks", state: "up" },
+  // Mullvad exits are tailscale+gluetun pods in vpn-endpoints: `node` is the rack the pod last ran on (a kubectl
+  // sample from 2026-10-29). Pods are rescheduled when a rack fails, so this is where it was, not where it must be. State is the tailnet's view, not the pod's: za is Running but headscale
+  // answers its polls with 404 node not found, so it is not an exit node at all.
+  { id: "mullvad-de", name: "Mullvad DE", where: "Düsseldorf", site: "house", node: "nas", pod: "de-mullvad", state: "up" },
+  { id: "mullvad-ee", name: "Mullvad EE", where: "Tallinn", site: "house", node: "big", pod: "ee-mullvad", state: "up" },
+  { id: "mullvad-jp", name: "Mullvad JP", where: "Tokyo", site: "house", node: "arch", pod: "jp-mullvad", state: "up" },
+  { id: "mullvad-za", name: "Mullvad ZA", where: "South Africa", site: "house", node: "closet", pod: "za-mullvad", state: "down", note: "Pod is Running 2/2, but headscale no longer knows the node (PollNetMap 404 node not found). Re-enrol it." },
+  // Not a pod: the Mullvad app on vpin, a Raspberry Pi on the house LAN. Its default route is Mullvad's own
+  // WireGuard tunnel, so the tailnet exit leaves the house already encrypted to Mullvad.
+  { id: "mullvad-us", name: "Mullvad US", where: "Ashburn, VA (Mullvad relay us-qas-wg-302)", site: "house", node: "vpin", via: "Mullvad WireGuard, wg0-mullvad", state: "up", note: "The Mullvad app runs on vpin itself (LAN sharing and quantum-resistant tunnel on), and Tailscale advertises it as an exit. Fixed sample from `mullvad status`, 2026-10-30." },
+];
+// Machines on the house LAN that are not in the estate feed (it lists k3s nodes and pite). Drawn after the
+// cluster in the machine row, without load bars: nothing reports their usage yet. RFC 1918 only.
+const EXTRA_HOSTS = [
+  { id: "vpin", name: "vpin", site: "house", ip: "192.168.5.118", what: "Raspberry Pi · NixOS aarch64 · wired (enu1u1)", tailnet: "mullvad-us-vpin-deccam.ts.2143.me", state: "up", note: "Runs the Mullvad app and offers the tailnet exit Mullvad US. Not in k3s." },
+];
+// Direct (non-Traefik) services: the port each binds, and the interface that reaches it. The WAN rows are the
+// router's dst-nat table plus the Verizon forwards (read-only `print`, 2026-10-29); the internal rows are the
+// service inventory and the tunnel ACL. RFC 1918 and 10.99 only, so safe to publish.
+// g 1 = port-forwarded from the internet; g 2 = internal only (the LAN, plus WireGuard where wg is set).
+const DIRECT = [
+  // One tile per forwarded port, so each label stays narrow and sits under its own tile.
+  { g: 1, id: "smtp", n: "Mail SMTP", p: "25", pr: "tcp", ip: "192.168.6.13", f: "25", note: "Stalwart" },
+  { g: 1, id: "submission", n: "Mail submission", p: "587", pr: "tcp", ip: "192.168.6.13", f: "587", note: "Stalwart" },
+  { g: 1, id: "imaps", n: "Mail IMAPS", p: "993", pr: "tcp", ip: "192.168.6.13", f: "993", note: "Stalwart" },
+  { g: 1, id: "coturn", n: "Steam lobby TURN", p: "3478", pr: "tcp+udp", ip: "192.168.6.14", f: "3478 tcp+udp" },
+  { g: 1, id: "coturn-relay", n: "TURN relay range", p: "45000-63", pr: "udp", ip: "192.168.6.14", f: "45000-45063 udp" },
+  { g: 1, id: "ts-voice", n: "TeamSpeak voice", p: "9987", pr: "udp", ip: "192.168.6.15", f: "9987" },
+  { g: 1, id: "ts-files", n: "TeamSpeak files", p: "30033", pr: "tcp", ip: "192.168.6.16", f: "30033" },
+  { g: 1, id: "openrct2", n: "OpenRCT2", p: "11753", pr: "tcp", ip: "192.168.6.17", f: "11753" },
+  { g: 1, id: "stun", n: "headscale STUN", p: "3479", pr: "udp", ip: "192.168.6.18", f: "3479", note: "externalTrafficPolicy: Local" },
+  { g: 1, id: "livekit", n: "LiveKit signal", p: "7881", pr: "tcp", ip: "192.168.6.22", f: "7881" },
+  { g: 1, id: "minecraft", n: "Minecraft", p: "25565", pr: "tcp", ip: "192.168.6.29", f: "25565" },
+  { g: 1, id: "factorio", n: "Factorio", p: "34197", pr: "udp", ip: "192.168.6.28", f: "34197" },
+  { g: 1, id: "monero", n: "Monero P2P", p: "18080", pr: "tcp", ip: "192.168.5.76", f: "18080", note: "bare metal, not in the cluster" },
+  { g: 2, id: "postgres", n: "Postgres", p: "5432", pr: "tcp", ip: "192.168.5.36", wg: 1, note: "in-cluster, on closet" },
+  { g: 2, id: "temporal", n: "Temporal gRPC", p: "7233", pr: "tcp", ip: "192.168.6.20", wg: 1 },
+  { g: 2, id: "seaweed", n: "SeaweedFS S3", p: "8333", pr: "tcp", ip: "192.168.6.31", wg: 1, st: "s3" },
+  { g: 2, id: "mimir", n: "Mimir", p: "8080", pr: "tcp", ip: "192.168.6.23", wg: 1 },
+  { g: 2, id: "loki", n: "Loki", p: "3100", pr: "tcp", ip: "192.168.6.24", wg: 1 },
+  { g: 2, id: "mosquitto", n: "MQTT", p: "1883", pr: "tcp", ip: "192.168.6.19" },
+  { g: 2, id: "syslog", n: "Syslog", p: "514", pr: "udp", ip: "192.168.6.25" },
+  { g: 2, id: "frigate", n: "Frigate", p: "—", pr: "tcp", ip: "192.168.6.26", note: "no port recorded" },
+  { g: 2, id: "lan-dns", n: "LAN DNS", p: "53", pr: "tcp+udp", ip: "192.168.6.30" },
+  { g: 2, id: "k8s-api", n: "k8s API", p: "6443", pr: "tcp", ip: "192.168.5.10", note: "v4 only" },
+];
+const DGRP = { 1: { k: "wan", t: "WAN · port-forwarded" }, 2: { k: "int", t: "Internal · LAN and WireGuard" } };
+let flat = false;
+const project = (x, y) => (flat ? { x: OX + x * U, y: OY + y * U } : { x: OX + 0.866 * (x - y) * U, y: OY + 0.5 * (x + y) * U });
+const div = (cls, parent, st) => { const d = document.createElement("div"); d.className = cls; Object.assign(d.style, st || {}); parent.append(d); return d; };
+const px = (t) => t * U + "px";
+
+// A service tile carries a short name; the hover tip and the inspector carry the full hostname.
+const shortName = (n) => {
+  if (/^[a-z0-9./-]+$/i.test(n) && n.includes(".")) {
+    if (n.length <= 9) return n;                        // 2143.me, i.2143.me
+    const seg = n.split("/")[1];
+    return (seg || n.split(".")[0]).slice(0, 9);         // 2143.me/user -> user; files.john2143.com -> files
+  }
+  const h = /^(.+?)\.(john2143\.com|2143\.me)$/.exec(n);
+  if (h) return h[1].slice(0, 9);
+  const u = /^(.+?)\/(.+)$/.exec(n);
+  if (u) return u[2].slice(0, 9);
+  return n.replace(/\s*\(.*\)\s*/, "").split(" ")[0].slice(0, 9);
+};
+
+// Which room a component's service tile belongs to: the room at the end of its via path.
+function serviceSite(e, c) {
+  const h = e.hops.find((x) => x.id === c.via[c.via.length - 1]);
+  const st = h && e.stations.find((s) => s.id === h.to);
+  return st?.site || "house";
+}
+
+// Buildings = provider × role. CDN home-proxy (edge) buildings stand in front of the origins,
+// between the street and the house; they are dashed while planned.
+const BUILDING_ROWS = [["hetzner:edge", "do:edge"], ["home:origin", "do:origin"]];
+const bkOf = (site) => site.provider + ":" + (site.role || "origin");
+const siteBk = (sid) => { const s = est?.sites.find((x) => x.id === sid); return s ? bkOf(s) : null; };
+
+function build(e) {
+  built = e.layout + e.nodes.length + e.sites.length;
+  fp.textContent = ov.textContent = "";
+  pos.clear(); els.clear(); lbs.clear(); cables.clear(); bbox.clear();
+  const ingress = (sid) => e.stations.filter((s) => s.site === sid && s.tier === "ingress");
+  // A station that is also a machine (home-pi, pite, status-1) is drawn once, as the machine.
+  const nodeIds = new Set(e.nodes.map((n) => n.id)), alias = (s) => nodeIds.has(s.id);
+  // The Traefik VIP is not a machine: it gets its own band, out of the kube platform.
+  const vip = (sid) => e.stations.filter((s) => s.site === sid && s.kind === "vip");
+  const compute = (sid) => [...e.nodes.filter((n) => n.site === sid).map((n) => ({ n })), ...e.stations.filter((s) => s.site === sid && s.tier === "compute" && s.kind !== "vip" && !alias(s)).map((s) => ({ s })), ...EXTRA_HOSTS.filter((h) => h.site === sid).map((h) => ({ h }))];
+  const RH = ROW_H + 0.66, isKube = (n) => n.role === "server" || n.role === "agent";
+  const service = (sid) => e.components.filter((c) => serviceSite(e, c) === sid).map((c) => ({ c }));
+  // A room with nothing in its service row lays out on one row: ingress, then its machines beside it.
+  const compact = (s) => !s.planned && !vip(s.id).length && !service(s.id).length;
+  // Tailscale things that run in a room (exit nodes, relays) sit in a thin row directly under the machine or
+  // station that hosts them, each with a short link up to it. No box: the host is the grouping.
+  const tsIn = (sid) => [...DERP.filter((x) => x.site === sid).map((x) => ({ k: "dp:" + x.id, cls: "dp", host: "st:" + x.at })), ...EXIT_NODES.filter((x) => x.site === sid).map((x) => ({ k: "x:" + x.id, cls: "xn", host: x.node ? "n:" + x.node : "st:" + x.at }))];
+  const XR = 2.2;   // the exit row: small tiles only; their names are hover tips
+  const roomW = (sid, min) => { const s = e.sites.find((x) => x.id === sid); return Math.max(min, compact(s) ? (ingress(sid).length + compute(sid).length) * 3 : Math.max(ingress(sid).length, compute(sid).length, service(sid).length * 3.9)) + 1; };
+  const LEFT = 5, STREET_Y = -4;
+  let y0 = 0, maxX = 0;
+  for (const row of BUILDING_ROWS) {
+    let bx = LEFT, rowH = 0;
+    for (const bk of row) {
+      const [pid, role] = bk.split(":");
+      const prov = e.providers.find((p) => p.id === pid);
+      const sites = SITE_ORDER.map((id) => e.sites.find((s) => s.id === id)).filter((s) => s && bkOf(s) === bk);
+      if (!prov || !sites.length) continue;
+      // Planned buildings are drawn compact: narrower rooms and no service row.
+      const planned = sites.every((s) => s.planned);
+      const roomH = planned ? ROW_H * 2 + 2 : ROW_H * 3 + 2;
+      const tsHere = bk === "home:origin" && e.stations.some((x) => x.id === "tailnet");
+      const bw = Math.max(...sites.map((s) => roomW(s.id, planned ? 4 : 6))) + PAD * 2;
+      const roomHOf = (s) => (compact(s) ? RH + 0.6 : roomH + (vip(s.id).length ? RH : 0) + (vip(s.id).length && service(s.id).length ? 1.2 : 0)) + (tsIn(s.id).length ? XR : 0);
+      // The direct-services room: two strips of port tiles.
+      const dnHere = bk === "home:origin" && !planned;
+      const dnW = bw - PAD * 2, DN_CAP = Math.max(4, Math.floor((dnW - 2) / 3.9));
+      // Balance the rows: 10 tiles over 2 rows is 5 and 5, not 6 and 4.
+      const dnGrid = (g) => { const n = DIRECT.filter((d) => d.g === g).length, r = Math.ceil(n / DN_CAP); return { n, r, per: Math.ceil(n / r) }; };
+      const DN_ROW = 2.5;
+      const dnH = (g) => { const q = dnGrid(g); return q.r * DN_ROW + 1.7; };
+      // Target has no port forwards at all (the router's own name says so), so the WAN strip is today-only.
+      const dnGroups = e.layout === "target" ? [2] : [1, 2];
+      const dnRoomH = dnHere ? dnGroups.reduce((a, g) => a + dnH(g), 1.2) : 0;
+      const bh = sites.reduce((a, s) => a + roomHOf(s) + PAD, PAD) + (dnHere ? dnRoomH + PAD : 0);
+      const short = prov.name + (role === "edge" && e.sites.some((s) => s.provider === pid && s.role !== "edge") ? " edge" : "");
+      bbox.set(bk, { x: bx, y: y0, w: bw, h: bh, name: prov.name + (role === "edge" ? " · CDN home proxy" : ""), short, planned });
+      const b = div("bld" + provCls(pid) + (planned ? " planned" : ""), fp, { left: px(bx), top: px(y0), width: px(bw), height: px(bh) });
+      div("front", b); div("frontr", b);
+      let ry = y0 + PAD;
+      for (const s of sites) {
+        const rw = bw - PAD * 2, rx = bx + PAD, rh = roomHOf(s), hasVip = vip(s.id).length > 0;
+        div("room" + (s.planned ? " planned" : ""), fp, { left: px(rx), top: px(ry), width: px(rw), height: px(rh) });
+        // Row tops, in tiles: ingress | machines | (VIP) | services.
+        const xr = tsIn(s.id).length ? XR : 0, yX = ry + RH * 2;
+        const svcN = service(s.id).length, yIng = ry, yMach = ry + RH, yVip = yMach + RH + xr, ySvc = hasVip ? yVip + RH + (svcN ? 1.2 : 0) : yMach + RH + xr;
+        const rowsY = compact(s) ? [] : hasVip ? [yMach, yVip, ySvc] : planned ? [yMach] : [yMach, ySvc];
+        rowsY.forEach((y) => div("row", fp, { left: px(rx), width: px(rw), top: px(y) }));
+        // Room labels sit in the ingress row's free space, clear of the machines.
+        pos.set("room:" + s.id, hasVip || service(s.id).length ? { x: rx + rw - 9, y: ry + 1.1 } : { x: rx + Math.min(rw * 0.45, 7), y: ry + rh / 2 });
+        const put = (key, i, y, w = 2, h = 2) => { const x = rx + 1 + i * 3; pos.set(key, { x: x + w / 2, y: y + 0.4 + h / 2 }); return { left: px(x), top: px(y + 0.4), width: px(w), height: px(h) }; };
+        const ing = ingress(s.id), cs = compute(s.id), mY = compact(s) ? yIng : yMach, m0 = compact(s) ? ing.length : 0;
+        ing.forEach((st, i) => els.set("st:" + st.id, div("tile st" + (st.planned ? " planned" : ""), fp, put("st:" + st.id, i, yIng))));
+        cs.forEach((o, i) => {
+          if (o.n) {
+            const r = div("rack", fp, put("n:" + o.n.id, m0 + i, mY)); r.innerHTML = "<i></i><i></i><i></i>"; els.set("n:" + o.n.id, r);
+            if (nodeIds.has(o.n.id)) { pos.set("st:" + o.n.id, pos.get("n:" + o.n.id)); els.set("st:" + o.n.id, r); }
+          } else if (o.h) {
+            const r = div("rack extra s-" + sk(o.h.state), fp, put("n:" + o.h.id, m0 + i, mY)); r.innerHTML = "<i></i><i></i><i></i>"; els.set("n:" + o.h.id, r);
+          } else els.set("st:" + o.s.id, div("tile st", fp, put("st:" + o.s.id, m0 + i, mY)));
+        });
+        const kn = cs.map((o, i) => (o.n && isKube(o.n) ? i : -1)).filter((i) => i >= 0);
+        if (hasVip && kn.length) {
+          // One box = one network: the k3s cluster. The VIP comes out of it into its own row.
+          const x0 = rx + 1 + kn[0] * 3 - 0.5, x1 = rx + 1 + kn[kn.length - 1] * 3 + 2.5, cx = (x0 + x1) / 2;
+          div("kube", fp, { left: px(x0), top: px(yMach + 0.1), width: px(x1 - x0), height: px(2.8) });
+          pos.set("kube:" + s.id, { x: x0 + 0.6, y: yMach + 2.9, n: kn.length, x1 });
+          const v = vip(s.id)[0], vw = 5;
+          els.set("st:" + v.id, div("tile st vip", fp, { left: px(cx - vw / 2), top: px(yVip + 0.5), width: px(vw), height: px(1.8) }));
+          pos.set("st:" + v.id, { x: cx, y: yVip + 1.4 });
+        }
+        const svc = service(s.id);
+        if (svcN) {
+          div("strip svc-strip", fp, { left: px(rx + 0.5), top: px(ySvc + 0.1), width: px(svc.length * 3.9 + 0.6), height: px(2.9) });
+          pos.set("sl:" + s.id, { x: rx + 1.4, y: ySvc + 0.55 });
+          svc.forEach((o, i) => {
+            const key = o.c ? "c:" + o.c.id : "st:" + o.s.id, cx = rx + 1 + i * 3.9;
+            pos.set(key, { x: cx + 1.75, y: ySvc + 0.75 + 0.75 });
+            const t = div("tile " + (o.c ? "svc" : "st"), fp, { left: px(cx), top: px(ySvc + 0.75), width: px(3.5), height: px(1.5) });
+            els.set(key, t);
+          });
+        }
+        // The exit row, just under the machines: each relay or exit node directly below its host, several
+        // hosts' worth side by side. Hosts below the row (the Traefik VIP) work too; the link just runs down.
+        const byHost = new Map();
+        for (const o of tsIn(s.id)) { const hp = pos.get(o.host); if (hp) byHost.set(o.host, [...(byHost.get(o.host) || []), o]); }
+        // Want each tile under its host; then sweep left to right so no two sit closer than a tile and a gap
+        // (the Traefik VIP is centred over the cluster, so its relay would otherwise land on nas's exits).
+        const row = [...byHost].flatMap(([hk, arr]) => arr.map((o, j) => ({ o, hk, x: pos.get(hk).x + (j - (arr.length - 1) / 2) * 1.8 }))).sort((p, q) => p.x - q.x);
+        row.forEach((r, i) => { if (i && r.x < row[i - 1].x + 1.8) r.x = row[i - 1].x + 1.8; });
+        const y = yX + XR / 2;
+        for (const { o, hk, x } of row) {
+          pos.set(o.k, { x, y, host: hk });
+          els.set(o.k, div("tile " + o.cls, fp, { left: px(x - 0.7), top: px(y - 0.7), width: px(1.4), height: px(1.4) }));
+        }
+        ry += rh + PAD;
+      }
+      // Direct services: reached by port, not by hostname. One strip for the internet, one for internal only.
+      if (dnHere) {
+        const rx = bx + PAD;
+        div("room dn-room", fp, { left: px(rx), top: px(ry), width: px(dnW), height: px(dnRoomH) });
+        let y = ry + 0.6;
+        dnGroups.forEach((g) => {
+          const arr = DIRECT.filter((d) => d.g === g), h = dnH(g), q = dnGrid(g);
+          div("strip dn-strip", fp, { left: px(rx + 0.5), top: px(y), width: px(q.per * 3.9 + 0.6), height: px(h) });
+          pos.set("dl:" + DGRP[g].k, { x: rx + 1.4, y: y + 0.55 });
+          arr.forEach((d, i) => {
+            const cx = rx + 1 + (i % q.per) * 3.9, cy = y + 1.15 + Math.floor(i / q.per) * DN_ROW, key = "sv:" + d.id;
+            const t = div("tile dn" + (d.wg ? " wg" : "") + (d.p.length > 6 ? " sm" : ""), fp, { left: px(cx), top: px(cy), width: px(3.5), height: px(1.5) });
+            // No text in the tile: it is inside the scaled plan, so text there shrinks to ~6px. The port is
+            // drawn on the label layer instead, which keeps its size at every zoom.
+            t.title = `${d.n} · ${d.ip} · ${d.p}/${d.pr}`;
+            t.classList.add("hot"); t.addEventListener("click", () => select("sv", d.id));
+            els.set(key, t); pos.set(key, { x: cx + 1.6, y: cy + 0.75 });
+            if (d.st) { els.set("st:" + d.st, t); pos.set("st:" + d.st, pos.get(key)); }
+          });
+          y += h + 0.5;
+        });
+        pos.set("room:direct", { x: rx + dnW - 5, y: ry + 0.5 });
+        ry += dnRoomH + PAD;
+      }
+      // Tailscale is an overlay, not a place: the tailnet sits in the margin left of Home, with any exit node
+      // whose host is unknown stacked under it.
+      if (tsHere) {
+        const x = bx - 2.6, y = y0 + PAD + RH + 1.4;
+        els.set("st:tailnet", div("tile st ts", fp, { left: px(x - 1), top: px(y - 1), width: px(2), height: px(2) }));
+        pos.set("st:tailnet", { x, y });
+        EXIT_NODES.filter((q) => !q.site).forEach((q, i) => {
+          const yy = y + 2.8 + i * 2.4;
+          els.set("x:" + q.id, div("tile xn nohost", fp, { left: px(x - 0.7), top: px(yy - 0.7), width: px(1.4), height: px(1.4) }));
+          pos.set("x:" + q.id, { x, y: yy });
+        });
+      }
+      bx += bw + GAP; rowH = Math.max(rowH, bh);
+    }
+    maxX = Math.max(maxX, bx - GAP);
+    y0 += rowH + GAP;
+  }
+  const maxY = y0 - GAP;
+  // Outside the buildings: the internet street, the tailnet (left of home), the DO⇄home pipe.
+  div("street", fp, { left: px(LEFT), top: px(STREET_Y), width: px(maxX - LEFT), height: px(2) });
+  pos.set("st:internet", { x: (LEFT + maxX) / 2, y: STREET_Y + 1 });
+  const hb = bbox.get("home:origin"), db = bbox.get("do:origin");
+  if (hb && db) {
+    const wgX = hb.x + hb.w + GAP / 2, wgY = hb.y + Math.min(hb.h, db.h) / 2;
+    els.set("st:wg", div("tile st", fp, { left: px(wgX - 0.9), top: px(wgY - 0.9), width: px(1.8), height: px(1.8) }));
+    pos.set("st:wg", { x: wgX, y: wgY });
+  }
+  const corners = [[0, STREET_Y], [maxX + 2, STREET_Y], [0, maxY + 1], [maxX + 2, maxY + 1]].map(([x, y]) => ({ x: 0.866 * (x - y) * U, y: 0.5 * (x + y) * U }));
+  const minX = Math.min(...corners.map((c) => c.x)), minY = Math.min(...corners.map((c) => c.y));
+  OX = -minX + 60; OY = -minY + 40;
+  cam.style.width = Math.max(...corners.map((c) => c.x)) - minX + 140 + "px";
+  cam.style.height = Math.max(...corners.map((c) => c.y)) - minY + 90 + "px";
+  fp.style.left = OX + "px"; fp.style.top = OY + "px";
+  fit();
+  const wire = (cls, pts, t = 0.16) => pts.slice(1).map((q, i) => {
+    const p = pts[i], vert = Math.abs(p.x - q.x) < 1e-6;
+    return div(cls + (vert ? " v" : ""), fp, vert ? { left: px(p.x - t / 2), top: px(Math.min(p.y, q.y)), width: px(t), height: px(Math.abs(q.y - p.y)) }
+      : { left: px(Math.min(p.x, q.x)), top: px(p.y - t / 2), width: px(Math.abs(q.x - p.x)), height: px(t) });
+  });
+  for (const h of e.hops) {
+    // Probe and report legs are the status page's own plumbing, not the estate's network: inspector only.
+    if (h.kind === "probe" || h.kind === "report") continue;
+    const a = pos.get("st:" + h.from), b = pos.get("st:" + h.to);
+    if (!a || !b) continue;
+    // The tailnet's link up to Traefik would cross the services row, so it is drawn only while the tailnet is selected.
+    const pts = h.from === "tailnet" ? [a, { x: a.x - 1.5, y: a.y }, { x: a.x - 1.5, y: b.y }, b] : [a, { x: b.x, y: a.y }, b];
+    const segs = wire("cable k-" + h.kind + (h.from === "tailnet" ? " ts-link" : ""), pts);
+    cables.set(h.id, { segs, pts, len: pts.slice(1).reduce((s, q, i) => s + Math.abs(q.x - pts[i].x) + Math.abs(q.y - pts[i].y), 0), pkts: [] });
+  }
+  // Tailscale's own wires (tailnet → Traefik is a hop above): the tailnet out to the internet, and each DERP relay
+  // to the place it runs. All hidden until the tailnet or that relay is selected, so they never add noise.
+  const tsWire = (key, a, b) => { if (!a || !b) return; const pts = [a, { x: a.x, y: Math.min(a.y, b.y) }, { x: b.x, y: Math.min(a.y, b.y) }, b].filter((p, i, arr) => !i || p.x !== arr[i - 1].x || p.y !== arr[i - 1].y); cables.set(key, { segs: wire("cable k-tunnel ts-link", pts), pts, len: 0, pkts: [] }); };
+  tsWire("ts:inet", pos.get("st:tailnet"), pos.get("st:internet"));
+  // Each relay and exit node is linked to the machine it runs on: a short vertical from the tile to the host's edge.
+  const hostLink = (key, k) => {
+    const a = pos.get(k), b = a && a.host && pos.get(a.host), hb = b && els.get(a.host); if (!hb) return;
+    const hh = parseFloat(hb.style.height) / U / 2, down = b.y > a.y, y0 = a.y + (down ? 0.7 : -0.7), y1 = b.y + (down ? -hh : hh);
+    // Straight up when the tile is under its host; otherwise a small elbow half-way.
+    const pts = Math.abs(a.x - b.x) < 0.05 ? [{ x: a.x, y: y0 }, { x: a.x, y: y1 }] : [{ x: a.x, y: y0 }, { x: a.x, y: (y0 + y1) / 2 }, { x: b.x, y: (y0 + y1) / 2 }, { x: b.x, y: y1 }];
+    cables.set(key, { segs: wire("cable k-tunnel xl", pts, 0.12), pts, len: 0, pkts: [] });
+  };
+  for (const x of DERP) hostLink("dp:" + x.id, "dp:" + x.id);
+  for (const x of EXIT_NODES) hostLink("xn:" + x.id, "x:" + x.id);
+  // The LAN leg from a home exit's host up to the MikroTik. Racks have no drawn uplinks (every machine is on the
+  // LAN), so this is only shown while that exit is selected; otherwise the lit path would break at the rack.
+  for (const x of EXIT_NODES) {
+    const r = x.node && pos.get("n:" + x.node), g = pos.get("st:router"); if (!r || !g || x.site !== "house") continue;
+    const y0 = r.y - 1, y1 = g.y + 1, ym = (y0 + y1) / 2;
+    const pts = Math.abs(r.x - g.x) < 0.05 ? [{ x: r.x, y: y0 }, { x: g.x, y: y1 }] : [{ x: r.x, y: y0 }, { x: r.x, y: ym }, { x: g.x, y: ym }, { x: g.x, y: y1 }];
+    cables.set("xu:" + x.id, { segs: wire("cable k-lan ts-link", pts), pts, len: 0, pkts: [] });
+  }
+  for (const c of e.components) {
+    const h = e.hops.find((x) => x.id === c.via[c.via.length - 1]);
+    const a = h && pos.get("st:" + h.to), b = pos.get("c:" + c.id);
+    if (!a || !b) continue;
+    const segs = [div("cable k-lan", fp, { left: px(Math.min(a.x, b.x)), top: px(a.y - 0.04), width: px(Math.abs(b.x - a.x)), height: px(0.08) }),
+      div("cable v k-lan", fp, { left: px(b.x - 0.04), top: px(Math.min(a.y, b.y)), width: px(0.08), height: px(Math.abs(b.y - a.y)) })];
+    cables.set("svc:" + c.id, { segs, pts: [a, { x: b.x, y: a.y }, b], len: 0, pkts: [] });
+  }
+  // Labels carry a level: building (b) and room (rm) always show; detail (d) shows when its
+  // building is zoomed, or anywhere when that thing is not up. Outside stations (o) always show.
+  // Each keeps its plan-space key so reanchor() can re-project it when the view goes flat or iso.
+  const label = (key, cls, html, on, lvl, bk) => {
+    if (!pos.get(key)) return;
+    const l = document.createElement("button"); l.type = "button"; l.className = "lb " + cls;
+    l.innerHTML = html; l.pk = key;
+    // Services, exit nodes and relays are many small tiles: their names are hover tips, not standing labels.
+    // The tile's colour carries the status; a tile that is not up keeps its label showing.
+    const tip = /^(c|x|dp):/.test(key) && lvl === "d";
+    if (tip) { l.classList.add("tip"); lvl = "h"; }
+    l.dataset.lvl = lvl; l.dataset.bk = bk || "";
+    l.addEventListener("click", on); ov.append(l); lbs.set(key, l);
+    const el = tip && els.get(key);
+    if (el) {
+      el.classList.add("hot");
+      el.addEventListener("click", on);
+      el.addEventListener("mouseenter", () => showTip(l, el, true));
+      el.addEventListener("mouseleave", () => showTip(l, el, false));
+    }
+  };
+  for (const row of BUILDING_ROWS) for (const bk of row) {
+    const bb = bbox.get(bk); if (!bb) continue;
+    pos.set("b:" + bk, { x: bb.x + bb.w / 2, y: bb.y - 0.2 });
+    label("b:" + bk, "bl" + provCls(bk.split(":")[0]) + (bb.planned ? " planned" : ""), esc(bb.planned ? bb.short + " · planned" : bb.name), () => zoomTo(zoom === bk ? null : bk), "b", bk);
+    lbs.get("b:" + bk).title = bb.name + (bb.planned ? " · planned" : "");
+    for (const sid of SITE_ORDER) {
+      const s = e.sites.find((x) => x.id === sid); if (!s || bkOf(s) !== bk) continue;
+      label("room:" + sid, "rm", "", () => zoomTo(bk), "rm", bk);
+      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "ingress")) label("st:" + st.id, "sign", "", () => select("st", st.id), "d", bk);
+      for (const n of e.nodes.filter((x) => x.site === sid)) label("n:" + n.id, "", "", () => select("n", n.id), "d", bk);
+      for (const h of EXTRA_HOSTS.filter((x) => x.site === sid)) label("n:" + h.id, "", `<b>${esc(h.name)}</b>`, () => select("h", h.id), "d", bk);
+      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "compute" && x.kind !== "vip" && !nodeIds.has(x.id))) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
+      for (const st of e.stations.filter((x) => x.site === sid && x.kind === "vip")) label("st:" + st.id, "vip", "", () => select("st", st.id), "rm", bk);
+      const kp = pos.get("kube:" + sid);
+      if (kp) label("kube:" + sid, "kube-l", `<b>k3s cluster</b>`, () => zoomTo(bk), "d", bk);
+      if (pos.get("sl:" + sid)) label("sl:" + sid, "dl-l sv-l", "<b>Traefik services</b> · by hostname", () => zoomTo(bk), "d", bk);
+      for (const c of e.components.filter((x) => serviceSite(e, x) === sid)) label("c:" + c.id, "", "", () => select("c", c.id), "d", bk);
+      // A station that is drawn as a direct-service port tile (SeaweedFS) already has its element and tip.
+      for (const st of e.stations.filter((x) => x.site === sid && x.tier === "service" && !nodeIds.has(x.id) && !DIRECT.some((d) => d.st === x.id))) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
+    }
+  }
+  for (const id of ["internet", "wg"]) label("st:" + id, id === "internet" ? "sign" : "", "", () => select("st", id), "o", "");
+  if (pos.get("st:tailnet")) {
+    label("st:tailnet", "sign", "", () => select("st", "tailnet"), "d", "home:origin");
+    for (const x of DERP) label("dp:" + x.id, "", "", () => select("dp", x.id), "d", bkOf(e.sites.find((y) => y.id === x.site)));
+    for (const x of EXIT_NODES) label("x:" + x.id, "", "", () => select("x", x.id), "d", x.site ? bkOf(e.sites.find((y) => y.id === x.site)) : "home:origin");
+  }
+  if (pos.get("room:direct")) {
+    // Zoom-only: at full-plan scale the room is a few pixels tall and the label would sit on the tiles.
+    label("room:direct", "rm", "<b>Direct services</b> · not behind Traefik", () => zoomTo("home:origin"), "d", "home:origin");
+    [1, 2].filter((g) => pos.get("dl:" + DGRP[g].k)).forEach((g) => label("dl:" + DGRP[g].k, "dl-l", `<b>${DGRP[g].t}</b>`, () => zoomTo("home:origin"), "d", "home:origin"));
+    // The port is the tile's identity, so it stands under the tile; the full record is in the inspector.
+    DIRECT.forEach((d) => label("sv:" + d.id, "pn", `<b>${esc(d.p)}</b>`, () => select("sv", d.id), "d", "home:origin"));
+  }
+  reanchor();
+}
+
+// Level of detail: which labels are visible (and tabbable) right now.
+function lod() {
+  const deep = free.k >= K_DETAIL;
+  for (const l of lbs.values()) {
+    const lvl = l.dataset.lvl, was = !l.hidden;
+    let show = lvl === "b" || lvl === "rm" || lvl === "o";
+    if (lvl === "d") show = deep || (zoom ? l.dataset.bk === zoom : l.classList.contains("alarm"));
+    if (lvl === "h") show = l.classList.contains("alarm") && (!zoom || l.dataset.bk === zoom);
+    if (lvl === "rm" && zoom && l.dataset.bk !== zoom) show = false;
+    l.hidden = show === false;
+    if (!was && !l.hidden) { l.classList.remove("wz"); void l.offsetWidth; l.classList.add("wz"); }
+  }
+}
+
+function fit() {
+  const vw = $("#view").clientWidth || 900;
+  const w = parseFloat(cam.style.width);
+  const base = Math.min(1, vw / w);
+  cam.dataset.base = base;
+  $("#view").style.height = parseFloat(cam.style.height) * base + "px";
+  applyCam();
+}
+// The camera's fitted transform (overview or zoomed building), then the wheel's free zoom and pan on top.
+function camFit() {
+  const base = +cam.dataset.base || 1;
+  if (!zoom || !bbox.get(zoom)) return { s: base, tx: 0, ty: 0 };
+  const bb = bbox.get(zoom), vw = $("#view").clientWidth, vh = $("#view").clientHeight;
+  // Fit the zoomed building's projected box into the view, with a margin for labels.
+  const cs = [[bb.x, bb.y], [bb.x + bb.w, bb.y], [bb.x, bb.y + bb.h], [bb.x + bb.w, bb.y + bb.h]].map(([x, y]) => project(x, y));
+  const x0 = Math.min(...cs.map((c) => c.x)), x1 = Math.max(...cs.map((c) => c.x)), y0 = Math.min(...cs.map((c) => c.y)), y1 = Math.max(...cs.map((c) => c.y));
+  const s = Math.min((vw * 0.92) / (x1 - x0), (vh * 0.88) / (y1 - y0), flat ? 2.2 : base * 1.8);
+  return { s, tx: vw / 2 - ((x0 + x1) / 2) * s, ty: vh / 2 - ((y0 + y1) / 2) * s };
+}
+function applyCam() {
+  const f = camFit(), s = f.s * free.k, tx = f.tx * free.k + free.x, ty = f.ty * free.k + free.y;
+  cam.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+  cam.style.setProperty("--inv", 1 / s);
+}
+// Mouse wheel / trackpad pinch: zoom about the cursor. The point under the pointer stays under it.
+function wheelZoom(ev) {
+  if (!est) return;
+  ev.preventDefault();
+  const r = $("#view").getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  const k = Math.min(K_MAX, Math.max(1, free.k * Math.exp(-ev.deltaY * (ev.ctrlKey ? 0.01 : 0.0015))));
+  // Wheeling out at 1x inside a building steps back to the whole plan, like Esc.
+  if (k === 1 && free.k === 1 && ev.deltaY > 0 && zoom) { clearTimeout(wheelZoom.o); wheelZoom.o = setTimeout(() => zoomTo(null), 0); return; }
+  if (k === free.k) return;
+  const f = camFit(), was = free.k >= K_DETAIL;
+  // screen = f.t * k + free + plan * f.s * k; keep (mx,my) fixed.
+  const px0 = (mx - free.x - f.tx * free.k) / (f.s * free.k), py0 = (my - free.y - f.ty * free.k) / (f.s * free.k);
+  free.k = k;
+  if (k === 1) { free.x = 0; free.y = 0; } else { free.x = mx - f.tx * k - px0 * f.s * k; free.y = my - f.ty * k - py0 * f.s * k; }
+  cam.classList.add("wheel"); clearTimeout(wheelZoom.t); wheelZoom.t = setTimeout(() => cam.classList.remove("wheel"), 120);
+  applyCam(); hint();
+  // Labels only re-place when detail crosses its threshold, or when the wheel settles (keeps scrolling smooth).
+  if ((free.k >= K_DETAIL) !== was) { lod(); declutter(); }
+  clearTimeout(wheelZoom.d); wheelZoom.d = setTimeout(() => { lod(); declutter(); }, 160);
+}
+// Drag to pan while wheel-zoomed in.
+function dragPan(ev) {
+  if (free.k === 1 || ev.button !== 0 || ev.target.closest(".lb,.hot")) return;
+  const sx = ev.clientX, sy = ev.clientY, ox = free.x, oy = free.y;
+  cam.classList.add("wheel"); $("#view").setPointerCapture(ev.pointerId);
+  const mv = (e) => { free.x = ox + e.clientX - sx; free.y = oy + e.clientY - sy; applyCam(); };
+  const up = () => { $("#view").removeEventListener("pointermove", mv); cam.classList.remove("wheel"); declutter(); };
+  $("#view").addEventListener("pointermove", mv); $("#view").addEventListener("pointerup", up, { once: true });
+}
+function hint() {
+  let h = $("#zhint"); if (!h) { h = div("zhint", $("#view")); h.id = "zhint"; }
+  h.textContent = free.k > 1 ? `${Math.round(free.k * 100)}% · drag to pan · Esc to reset` : "Scroll to zoom";
+}
+// Put every label back on its anchor for the current projection.
+function reanchor() {
+  for (const l of lbs.values()) { const p = pos.get(l.pk); if (!p) continue; const q = project(p.x, p.y); l.bx = q.x; l.by = q.y; l.style.left = q.x + "px"; l.style.top = q.y + "px"; }
+}
+function zoomTo(pid) {
+  zoom = pid; free.k = 1; free.x = 0; free.y = 0; hint();
+  const nf = FLAT_ZOOM && !!pid;
+  if (nf !== flat) {
+    flat = nf; fp.classList.toggle("flat", flat);
+    // Hide labels while the plan swings between iso and flat; they reappear on their new anchors.
+    if (!reduce.matches) { ov.classList.add("moving"); clearTimeout(zoomTo.t); zoomTo.t = setTimeout(() => ov.classList.remove("moving"), 420); }
+  }
+  reanchor(); applyCam(); crumb(); lod(); declutter();
+  if (pid) lbs.get("b:" + pid)?.focus({ preventScroll: true });
+}
+function crumb() {
+  const parts = [`<button type="button" data-z="">Lab</button>`];
+  if (zoom) parts.push(esc(bbox.get(zoom)?.name || zoom));
+  if (sel) {
+    const site = sel.t === "n" ? est.nodes.find((n) => n.id === sel.id)?.site : sel.t === "st" ? est.stations.find((s) => s.id === sel.id)?.site : sel.t === "c" ? serviceSite(est, est.components.find((c) => c.id === sel.id)) : null;
+    if (sel.t === "x" || sel.t === "dp") parts.push("Tailscale");
+    if (sel.t === "sv") parts.push("Direct services");
+    if (sel.t === "h") parts.push(esc(est.sites.find((s) => s.id === EXTRA_HOSTS.find((x) => x.id === sel.id)?.site)?.name || ""));
+    if (site) parts.push(esc(est.sites.find((s) => s.id === site)?.name || site));
+  }
+  $("#crumb").innerHTML = parts.join(" › ");
+  $("#crumb [data-z]").addEventListener("click", () => zoomTo(null));
+}
+
+function update(e) {
+  est = e;
+  renderPlain(e, plain);
+  if (mode === "plain") return;
+  if (built !== e.layout + e.nodes.length + e.sites.length) build(e);
+  for (const w of e.workloads) {
+    const p = prevNode.get(w.id);
+    if (p && p !== w.node) movedFrom.set(w.id, { from: p, until: e.generated + 10 });
+    prevNode.set(w.id, w.node);
+  }
+  for (const [id, m] of movedFrom) if (m.until <= e.generated) movedFrom.delete(id);
+  for (const n of e.nodes) {
+    const r = els.get("n:" + n.id), l = lbs.get("n:" + n.id); if (!r) continue;
+    r.className = `rack s-${sk(n.state)}`;
+    const is = r.querySelectorAll("i");
+    [n.disk_pct, n.ram_pct, n.cpu_pct].forEach((p, i) => (is[i].className = grade(p)));
+    // Extruded height ∝ log RAM, drawn as a solid offset shadow.
+    const hgt = Math.round(Math.max(6, Math.min(28, 4 * Math.log2(n.ram_bytes / 2 ** 28))));
+    r.style.boxShadow = `${hgt * 0.7}px ${hgt * 0.7}px 0 color-mix(in srgb, var(--fg) 35%, var(--bg))`;
+    l.className = `lb ${l.classList.contains("tip") ? "tip " : ""}s-${sk(n.state)}${n.state !== "up" ? " alarm" : ""}`;
+    l.innerHTML = `<b>${esc(n.name)}</b>${n.state === "unknown" ? " Not reporting" : n.state !== "up" ? " " + stateWord(n.state) : ""}`;
+    l.setAttribute("aria-label", `rack ${n.name}: ${stateWord(n.state)}, cpu ${fmtPct(n.cpu_pct)}, ram ${fmtPct(n.ram_pct)}, disk ${fmtPct(n.disk_pct)}, network in ${bps(n.net_rx_bps)} out ${bps(n.net_tx_bps)}`);
+  }
+  for (const s of e.stations) {
+    const l = lbs.get("st:" + s.id); if (!l) continue;
+    const hs = e.hops.filter((h) => h.from === s.id || h.to === s.id);
+    const worst = hs.some((h) => h.state === "down") ? "down" : hs.some((h) => h.state === "degraded") ? "degraded" : "up";
+    const lat = Math.max(...hs.map((h) => h.latency_ms ?? 0));
+    l.className = `lb ${s.tier === "ingress" ? "sign " : ""}${s.kind === "vip" ? "vip " : ""}s-${s.planned ? "unknown" : worst}${!s.planned && worst !== "up" ? " alarm" : ""}`;
+    if (s.kind === "vip") { l.innerHTML = `<b>Traefik</b> <span class="net">${VIP_IP}</span>`; continue; }
+    // Latency only when a link is not healthy; healthy links just carry their name.
+    l.innerHTML = `<b>${esc(s.id === "wg" ? "WireGuard to DigitalOcean" : s.id === "tailnet" ? "Tailnet" : s.name.split(" · ")[0])}</b>${s.planned ? " · Planned" : worst !== "up" && lat ? " " + fmtMs(lat) : ""}`;
+  }
+  for (const c of e.components) {
+    const l = lbs.get("c:" + c.id), t = els.get("c:" + c.id); if (!l) continue;
+    l.className = `lb ${l.classList.contains("tip") ? "tip " : ""}s-${sk(c.state)}${c.state !== "up" ? " alarm" : ""}`;
+    l.innerHTML = `${esc(c.name)} <span class="st st-${sk(c.state)}">${stateWord(c.state)}</span>`;
+    t.style.background = c.state === "up" ? "" : `var(--${c.state === "down" ? "bad" : c.state === "degraded" ? "warn" : "line"})`;
+  }
+  for (const h of e.hops) {
+    const cb = cables.get(h.id); if (!cb) continue;
+    cb.segs.forEach((s) => { s.classList.toggle("c-degraded", h.state === "degraded"); s.classList.toggle("c-down", h.state === "down"); });
+    const n = h.kind === "public" || h.kind === "lan" ? Math.max(1, Math.min(4, Math.ceil(e.components.filter((c) => c.via.includes(h.id)).length / 2))) : 0;
+    while (cb.pkts.length < n) { const p = div("pkt", fp); p.p = cb.pkts.length / n; cb.pkts.push(p); }
+    while (cb.pkts.length > n) cb.pkts.pop().remove();
+    cb.speed = h.latency_ms ? Math.max(0.05, Math.min(0.5, 6 / h.latency_ms)) : 0.1;
+  }
+  const up = e.components.filter((c) => c.state === "up").length;
+  $("#sum").textContent = `${up}/${e.components.length} services up · ${e.nodes.length} machines · ${e.hops.length} links · layout: ${e.layout === "target" ? "Target" : "Today"}`;
+  $("#ages").textContent = `pite last report ${fmtAge(e.home_age_s)}${e.sample_age_s ? " · data " + fmtAge(e.sample_age_s) : ""}${e.load_error ? " · " + e.load_error : ""}`;
+  for (const st of e.sites) {
+    const l = lbs.get("room:" + st.id); if (!l) continue;
+    const ns = e.nodes.filter((n) => n.site === st.id);
+    const cs = e.components.filter((c) => serviceSite(e, c) === st.id);
+    const bad = [...ns, ...cs].filter((x) => x.state !== "up").length;
+    l.className = "lb rm" + (bad ? " s-degraded" : "");
+    const sum = roomSummary(e, st);
+    l.innerHTML = `<b>${esc(st.name)}</b>${st.planned ? " · Planned" : `${sum ? " · " + sum : ""}${bad ? ` · <span class="st st-degraded">${bad} need attention</span>` : ""}`}`;
+  }
+  for (const x of DERP) {
+    const l = lbs.get("dp:" + x.id), t = els.get("dp:" + x.id); if (!l) continue;
+    l.className = `lb ${l.classList.contains("tip") ? "tip " : ""}s-${sk(x.state)}${x.state !== "up" ? " alarm" : ""}`;
+    l.innerHTML = `DERP ${esc(x.name)} <span class="st st-${sk(x.state)}">${stateWord(x.state)}</span>`;
+    t.className = `tile dp s-${sk(x.state)}`;
+  }
+  for (const x of EXIT_NODES) {
+    const l = lbs.get("x:" + x.id), t = els.get("x:" + x.id); if (!l) continue;
+    // Mullvad pods are rescheduled when their rack goes down, so a down rack does not take the exit with it:
+    // the exit's own state stands. (nas's exit is the rack itself, so that one does follow its rack.)
+    const rk = x.node && est.nodes.find((n) => n.id === x.node), xs = rk && !x.pod && rk.state !== "up" && x.state === "up" ? rk.state : x.state;
+    l.className = `lb ${l.classList.contains("tip") ? "tip " : ""}s-${sk(xs)}${xs !== "up" ? " alarm" : ""}`;
+    l.innerHTML = `${esc(x.name)} <span class="st st-${sk(xs)}">${stateWord(xs)}</span>${rk ? ` <span class="via">on ${esc(rk.name)}</span>` : ""}`;
+    t.className = `tile xn s-${sk(xs)}`;
+  }
+  highlight();
+  if (sel) inspect();
+  crumb();
+  lod();
+  declutter();
+}
+
+// Label placement in overlay space. Drawn things (racks, tiles, the k3s platform) are obstacles. Buildings
+// place first, then rooms and the Traefik row, then outside stations, then details.
+// A label that names a drawn thing always sits under it, centred: first row straight below; if that is taken,
+// the next row down, with an arrow from the label up to its thing. Other labels (buildings, rooms) try small
+// steps around their anchor and take the lowest-cost spot. Labels never overlap each other.
+function declutter() {
+  // Everything here is computed from plan-space positions and the camera's target transform, not from
+  // on-screen rects, so the result is the same whether or not a zoom animation is still running.
+  const inv = parseFloat(cam.style.getPropertyValue("--inv")) || 1, G = 3 * inv;
+  const m = /translate\(([-\d.e]+)px,\s*([-\d.e]+)px\)/.exec(cam.style.transform), tx = m ? +m[1] : 0, ty = m ? +m[2] : 0;
+  const V = { x: -tx * inv, y: -ty * inv, w: $("#view").clientWidth * inv, h: $("#view").clientHeight * inv };
+  // An obstacle is the projected box of a drawn thing; in iso a tile is a diamond, so its inner 60% stands in.
+  const k = flat ? 1 : 0.6;
+  const box = (x, y, w, h, kk = k) => {
+    const cs = [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].map(([a, b]) => project(a, b));
+    const x0 = Math.min(...cs.map((c) => c.x)), x1 = Math.max(...cs.map((c) => c.x)), y0 = Math.min(...cs.map((c) => c.y)), y1 = Math.max(...cs.map((c) => c.y));
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, bw = (x1 - x0) * kk, bh = (y1 - y0) * kk;
+    return { x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh };
+  };
+  const obst = [...fp.querySelectorAll(".rack,.tile,.kube")].map((d) => box(parseFloat(d.style.left) / U, parseFloat(d.style.top) / U, parseFloat(d.style.width) / U, parseFloat(d.style.height) / U, d.classList.contains("kube") ? k * 0.85 : k));
+  // Labels pinned under a drawn thing go before the free ones, so the free ones work around them.
+  const rank = (l) => (l.classList.contains("bl") ? 0 : els.get(l.pk)?.style.width ? 1 : l.dataset.lvl === "rm" ? 2 : 3);
+  const all = [...lbs.values()].filter((l) => l.bx != null && !l.hidden && !(l.classList.contains("tip") && !l.classList.contains("alarm")) && !l.classList.contains("dl-l") && l.pk !== "room:direct").sort((a, b) => rank(a) - rank(b) || a.by - b.by || a.bx - b.bx);
+  const cover = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) + G) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) + G);
+  const outside = (b) => Math.max(0, V.x - b.x) + Math.max(0, b.x + b.w - V.x - V.w) + Math.max(0, V.y - b.y) + Math.max(0, b.y + b.h - V.y - V.h);
+  // Labels pinned under a thing ignore the k3s box: it is a container, its racks are what they name.
+  const tiles = [...fp.querySelectorAll(".rack,.tile")].map((d) => box(parseFloat(d.style.left) / U, parseFloat(d.style.top) / U, parseFloat(d.style.width) / U, parseFloat(d.style.height) / U));
+  const placed = [];
+  // Pinned strip labels never move, so they are obstacles for the labels that do.
+  for (const l of [...lbs.values()].filter((x) => x.bx != null && !x.hidden && x.classList.contains("dl-l")))
+    placed.push({ x: l.bx, y: l.by - (l.offsetHeight * inv) / 2, w: l.offsetWidth * inv, h: l.offsetHeight * inv });
+  ov.querySelectorAll(".lead").forEach((d) => d.remove());
+  for (const l of all) {
+    const w = l.offsetWidth * inv, h = l.offsetHeight * inv, bl = l.classList.contains("bl");
+    const el = !bl && els.get(l.pk);
+    if (el && el.style.width) {
+      const o = box(parseFloat(el.style.left) / U, parseFloat(el.style.top) / U, parseFloat(el.style.width) / U, parseFloat(el.style.height) / U, 1);
+      const cx = o.x + o.w / 2, top0 = o.y + o.h + G;
+      let best = null, bestCost = Infinity, bestR = 0;
+      for (let r = 0; r < 6; r++) for (const i of [0, -1, 1, -2, 2]) {
+        const b = { x: cx - w / 2 + i * 0.3 * w, y: top0 + r * (h + G), w, h };
+        if (placed.some((p) => cover(p, b) > 0)) continue;
+        const cost = tiles.reduce((s, q) => s + cover(q, b), 0) * 4 + r * h * h * 0.6 + Math.abs(i) * h * h * 0.9;
+        if (cost < bestCost) { best = b; bestCost = cost; bestR = r; }
+      }
+      best = best || { x: cx - w / 2, y: top0, w, h };
+      l.style.left = best.x + w / 2 + "px"; l.style.top = best.y + h / 2 + "px";
+      placed.push(best);
+      // Not straight under its thing: an arrow from the label's top edge up to the thing's bottom edge.
+      if (bestR > 0 || Math.abs(best.x + w / 2 - cx) > 1) {
+        const lx = Math.min(Math.max(cx, best.x + 4 * inv), best.x + w - 4 * inv);
+        const d = document.createElement("div"); d.className = "lead"; d.setAttribute("aria-hidden", "true");
+        Object.assign(d.style, { left: lx + "px", top: o.y + o.h + "px", height: Math.max(0, best.y - o.y - o.h) + "px" });
+        ov.prepend(d);
+      }
+      continue;
+    }
+    // Anchor box: building labels hang above their point, the rest are centred on it.
+    const ax = l.bx - w / 2, ay = bl ? l.by - h : l.by - h / 2, sy = 0.55 * (h + G), sx = 0.25 * w + 8 * inv;
+    // A label whose anchor is off-view (another building, when zoomed) is not pulled into view.
+    const inView = outside({ x: l.bx, y: l.by, w: 0, h: 0 }) === 0;
+    let best = null, bestCost = Infinity;
+    for (let j = -8; j <= 8; j++) for (let i = -6; i <= 6; i++) {
+      const b = { x: ax + i * sx, y: ay + j * sy, w, h };
+      if (placed.some((p) => cover(p, b) > 0)) continue;
+      const dist = Math.hypot(i * sx, j * sy * 1.6);
+      const cost = obst.reduce((s, o) => s + cover(o, b), 0) * 4 + dist * h * 0.35 + (inView ? outside(b) * h * 40 : 0);
+      if (cost < bestCost) { best = b; bestCost = cost; }
+    }
+    best = best || { x: ax, y: ay, w, h };
+    l.style.left = best.x + w / 2 + "px";
+    l.style.top = (bl ? best.y + h : best.y + h / 2) + "px";
+    placed.push(best);
+  }
+}
+
+// A hover tip sits just under its tile, above everything else, and is not part of the label layout.
+function showTip(l, el, on) {
+  if (l.classList.contains("alarm")) return;
+  l.hidden = !on; if (!on) return;
+  const x = parseFloat(el.style.left) / U, y = parseFloat(el.style.top) / U, w = parseFloat(el.style.width) / U, h = parseFloat(el.style.height) / U;
+  const q = project(x + w / 2, y + h);
+  l.style.left = q.x + "px"; l.style.top = q.y + 4 * (parseFloat(cam.style.getPropertyValue("--inv")) || 1) + "px";
+}
+function select(t, id) { sel = sel && sel.t === t && sel.id === id ? null : { t, id }; if (!sel) return clearSel(); inspect(); highlight(); crumb(); }
+function clearSel() {
+  const k = sel ? (sel.t === "st" ? "st:" : sel.t + ":") + sel.id : null;
+  sel = null; highlight(); crumb();
+  insp.innerHTML = "<p>Select a rack, station or service to inspect it. Esc steps back out.</p>";
+  if (k) lbs.get(k)?.focus({ preventScroll: true });
+}
+function highlight() {
+  $("#cam").classList.toggle("dim", !!sel && (sel.t === "c" || ((sel.t === "st" && sel.id === "tailnet") || sel.t === "dp")));
+  for (const el of [...els.values(), ...[...cables.values()].flatMap((c) => c.segs)]) el.classList.remove("on");
+  // Tailnet selected: its link to Traefik (net.2143.me), out to the internet, and every relay to where it runs.
+  // A relay selected: just that relay's wire.
+  const ts = sel?.t === "st" && sel.id === "tailnet", dp = sel?.t === "dp" && DERP.find((x) => x.id === sel.id);
+  if (ts || dp) {
+    const on = (k) => cables.get(k)?.segs.forEach((s) => s.classList.add("on"));
+    if (ts) { for (const h of est.hops.filter((x) => x.from === "tailnet")) { on(h.id); els.get("st:" + h.to)?.classList.add("on"); } on("ts:inet"); els.get("st:tailnet")?.classList.add("on"); }
+    for (const x of ts ? DERP : [dp]) { on("dp:" + x.id); els.get("dp:" + x.id)?.classList.add("on"); els.get("st:" + x.at)?.classList.add("on"); }
+    if (ts) for (const x of EXIT_NODES) els.get("x:" + x.id)?.classList.add("on");
+    return;
+  }
+  const xn = sel?.t === "x" && EXIT_NODES.find((x) => x.id === sel.id);
+  if (xn) {
+    $("#cam").classList.add("dim");
+    els.get("x:" + xn.id)?.classList.add("on");
+    cables.get("xn:" + xn.id)?.segs.forEach((s) => s.classList.add("on"));
+    cables.get("xu:" + xn.id)?.segs.forEach((s) => s.classList.add("on"));
+    for (const k of exitPath(xn).keys) els.get(k)?.classList.add("on");
+    for (const h of exitPath(xn).hops) cables.get(h)?.segs.forEach((s) => s.classList.add("on"));
+    return;
+  }
+  if (!sel || sel.t !== "c") return;
+  const c = est.components.find((x) => x.id === sel.id);
+  els.get("c:" + c.id)?.classList.add("on");
+  cables.get("svc:" + c.id)?.segs.forEach((s) => s.classList.add("on"));
+  for (const hid of c.via) { const h = est.hops.find((x) => x.id === hid); cables.get(hid)?.segs.forEach((s) => s.classList.add("on")); els.get("st:" + h.from)?.classList.add("on"); els.get("st:" + h.to)?.classList.add("on"); }
+}
+// An exit node's physical way out: the rack its pod runs on, then that rack's site's hops to the internet.
+function exitPath(x) {
+  const n = x.node && (est.nodes.find((y) => y.id === x.node) || EXTRA_HOSTS.find((y) => y.id === x.node));
+  if (!n && !x.at) return { keys: [], hops: [], names: [], n: null };
+  const keys = n ? ["n:" + n.id] : [], hops = [], names = n ? [n.name + (x.via ? ` (inside ${x.via})` : "")] : [];
+  // Walk upstream to the internet: a home rack goes out via the router (<- verizon <- internet); a cloud
+  // exit starts at its own station (doks <- DO load balancer <- internet).
+  let at = n ? "router" : x.at;
+  if (est.stations.some((s) => s.id === at)) {
+    keys.push("st:" + at); names.push(est.stations.find((s) => s.id === at).name.split(" · ")[0]);
+    for (let i = 0; i < 4; i++) {
+      const h = est.hops.find((y) => y.to === at && y.kind !== "tunnel" && y.kind !== "probe");
+      if (!h) break;
+      hops.push(h.id); at = h.from; keys.push("st:" + at);
+      const st = est.stations.find((s) => s.id === at); names.push(st ? st.name.split(" · ")[0] : at);
+    }
+  }
+  return { keys, hops, names, n };
+}
+function inspect() {
+  const e = est, hadX = document.activeElement?.classList.contains("x");
+  let h = "";
+  if (sel.t === "n") {
+    const n = e.nodes.find((x) => x.id === sel.id); if (!n) return clearSel();
+    const ws = e.workloads.filter((w) => w.node === n.id).sort((a, b) => b.ram_req_bytes - a.ram_req_bytes);
+    const ub = (k, p) => `<span>${k}</span><span><i class="${grade(p)}" style="width:${p}%"></i></span><span>${fmtPct(p)}</span>`;
+    h = `<h2>Rack ${esc(n.name)}</h2><p><span class="st st-${sk(n.state)}">${stateWord(n.state)}</span> · ${esc(n.role)} · ${n.arch}<br>${n.lan_ip ? esc(n.lan_ip) : "—"}${n.public_ip_locked ? ' <span class="chip locked">Sign in to reveal</span>' : ""}<br>${n.cpu_cores} cores · ${fmtBytes(n.ram_bytes)} · ${fmtBytes(n.disk_bytes)}<br>network ${net(n.net_rx_bps, n.net_tx_bps)}<br>reported ${n.age_s == null ? "not measured" : fmtAge(n.age_s)}</p>
+      <div class="ub">${ub("cpu", n.cpu_pct)}${ub("ram", n.ram_pct)}${ub("disk", n.disk_pct)}</div>
+      <p><strong>Tenants</strong> (RAM requests packed)</p><div class="pack">${ws.map((w) => `<i style="width:${((100 * w.ram_req_bytes) / n.ram_bytes).toFixed(2)}%" title="${esc(w.name)}"></i>`).join("")}</div>
+      <table><tbody>${ws.map((w) => `<tr><td>${esc(w.name)}${movedFrom.has(w.id) ? ` <span class="moved">moved from ${esc(movedFrom.get(w.id).from)}</span>` : ""}</td><td>${fmtBytes(w.ram_req_bytes)} · ${w.ram_bytes == null ? "?" : fmtBytes(w.ram_bytes)}</td><td>${w.ready ? "ready" : "not ready"} · ${w.restarts}↻</td><td>${esc(w.version || "")}</td></tr>`).join("") || "<tr><td>No workloads</td></tr>"}</tbody></table>
+      <p><a href="#row-node-${esc(n.id)}">Show in table</a></p>`;
+  } else if (sel.t === "st") {
+    const s = e.stations.find((x) => x.id === sel.id); if (!s) return clearSel();
+    const hs = e.hops.filter((x) => x.from === s.id || x.to === s.id);
+    const ids = new Set(hs.map((x) => x.id));
+    h = `<h2>${esc(s.name)}</h2><p>${esc(s.kind)} · ${esc(s.site || "between buildings")} · ${s.tier}${s.planned ? " · planned" : ""}</p>${s.id === "tailnet" ? `<p>Control server <a href="https://net.2143.me">net.2143.me</a> is served by <b>Traefik</b> <span class="net">${VIP_IP}</span>. Tailnet clients reach Traefik directly for <span class="net">*.ts.2143.me</span>.</p><p>Out to the internet: clients connect peer to peer, through a DERP relay when they cannot. Relays: ${DERP.map((x) => `${esc(x.name)} <span class="st st-${sk(x.state)}">${stateWord(x.state)}</span>`).join(", ")}.</p>` : ""}
+      <table><tbody>${hs.map((x) => `<tr><td>${x.from === s.id ? "→ " + esc(x.to) : "← " + esc(x.from)}</td><td>${esc(x.label)}</td><td>${fmtMs(x.latency_ms)}</td><td><span class="st st-${sk(x.state)}">${stateWord(x.state)}</span></td></tr>`).join("") || "<tr><td>No links yet</td></tr>"}</tbody></table>
+      <p>Routes: ${e.components.filter((c) => c.via.some((v) => ids.has(v))).map((c) => esc(c.name)).join(", ") || "—"}</p>${hs[0] ? `<p><a href="#row-hop-${esc(hs[0].id)}">Show in table</a></p>` : ""}`;
+    if (s.id === "router") h += `<h3>Port forwards</h3><p>Internet → Verizon forward → MikroTik WAN → dst-nat → target. Both hops are required; one alone fails silently.</p><table><tbody>${DIRECT.filter((d) => d.g === 1).map((d) => `<tr><td class="net">${esc(d.f)}</td><td><span class="net">${esc(d.ip)}</span>:${esc(d.p)}</td><td>${esc(d.n)}</td></tr>`).join("")}</tbody></table>`;
+  } else if (sel.t === "dp") {
+    const x = DERP.find((y) => y.id === sel.id);
+    h = `<h2>DERP relay ${esc(x.name)}</h2><p><span class="st st-${sk(x.state)}">${stateWord(x.state)}</span>${x.ms ? " · " + fmtMs(x.ms) : ""}${x.note ? " · " + esc(x.note) : ""}</p><p>Runs on ${esc(x.where)}. Relays tailnet traffic when two devices cannot connect directly. Status is a fixed sample until pite reports <span class="net">tailscale netcheck</span>.</p>`;
+  } else if (sel.t === "sv") {
+    const d = DIRECT.find((y) => y.id === sel.id);
+    const iface = d.g === 1 ? "the internet, through a port forward" : d.wg ? "the LAN, and the WireGuard tunnel" : "the LAN only";
+    h = `<h2>${esc(d.n)}</h2><p>Listens on <span class="net">${esc(d.ip)}</span> · <span class="net">${esc(d.p)}</span>/${esc(d.pr)}. Reached over ${iface}. Not behind Traefik: no hostname, no certificate.</p>` +
+      (d.g === 1 ? `<p>Path in: internet → Verizon CR1000B (forward <span class="net">${esc(d.f)}</span>) → MikroTik WAN → dst-nat → <span class="net">${esc(d.ip)}</span>.</p>` : "") +
+      (d.wg ? `<p>The DigitalOcean cluster reaches it on <span class="net">wg-remote</span>: an explicit forward allow sits above the tunnel's default deny.</p>` : "") +
+      (d.note ? `<p>${esc(d.note)}</p>` : "");
+  } else if (sel.t === "h") {
+    const m = EXTRA_HOSTS.find((y) => y.id === sel.id), xs = EXIT_NODES.filter((x) => x.node === m.id);
+    h = `<h2>${esc(m.name)}</h2><p><span class="st st-${sk(m.state)}">${stateWord(m.state)}</span> · ${esc(m.what)}</p><p>LAN <span class="net">${esc(m.ip)}</span> · tailnet name <span class="net">${esc(m.tailnet)}</span></p>` +
+      (xs.length ? `<p>Exit nodes: ${xs.map((x) => `<b>${esc(x.name)}</b>`).join(", ")}</p>` : "") + `<p>${esc(m.note)}</p><p>Not in the estate feed: no load figures, state is a fixed sample.</p>`;
+  } else if (sel.t === "x") {
+    const x = EXIT_NODES.find((y) => y.id === sel.id);
+    const ep = exitPath(x), st = ep.n && !x.pod && ep.n.state && ep.n.state !== "up" ? ep.n.state : x.state;
+    h = `<h2>Exit node ${esc(x.name)}</h2><p><span class="st st-${sk(st)}">${stateWord(st)}</span> · ${esc(x.where)}</p>` +
+      (ep.names.length ? (ep.n ? `<p>${x.pod ? `Pod <span class="net">vpn-endpoints/${esc(x.pod)}</span>, last seen on rack` : x.via ? "Runs as an app on" : "Runs on the rack itself:"} <b>${esc(ep.n.name)}</b> <span class="st st-${sk(ep.n.state)}">${stateWord(ep.n.state)}</span>.${x.pod ? " Kubernetes moves it to another rack if this one goes down." : ""}</p>` : "") +
+        `<p>Physical path: ${ep.names[0] === x.name ? "" : `<b>${esc(x.name)}</b> ⇐ ${x.pod ? "WireGuard ⇐ " : ""}`}${ep.names.map((v, i) => (i || ep.names[0] !== x.name ? esc(v) : `<b>${esc(v)}</b>`)).join(" → ")}</p>`
+        : `<p>Physical path unknown.</p>`) +
+      (x.note ? `<p>${esc(x.note)}</p>` : "") + `<p>Status is a fixed sample until the tailnet is reported.</p>`;
+  } else {
+    const c = e.components.find((x) => x.id === sel.id);
+    const outs = e.outages.filter((o) => o.id === c.id);
+    h = `<h2>${esc(c.name)}</h2><p><span class="st st-${sk(c.state)}">${stateWord(c.state)}</span> · ${fmtMs(c.latency_ms)} · 30 d ${c.uptime["30d"]}%</p>
+      <div class="days" aria-hidden="true">${c.daily_pct.map((p) => `<i class="${p < 99 ? "x" : p < 99.9 ? "m" : ""}"></i>`).join("")}</div>
+      <p>Path: ${c.via.map((v) => esc(e.hops.find((x) => x.id === v)?.label || v)).join(" → ")}</p>
+      <table><tbody>${outs.map((o) => `<tr><td>${new Date(o.start * 1000).toISOString().slice(0, 16).replace("T", " ")}</td><td>${o.end == null ? "ongoing" : Math.round((o.end - o.start) / 60) + " min"}</td></tr>`).join("") || "<tr><td>No outages in 90 days</td></tr>"}</tbody></table>
+      <p><a href="#row-component-${esc(c.id)}">Show in table</a></p>`;
+  }
+  insp.innerHTML = `<button type="button" class="x" aria-label="Close">Esc</button>` + h;
+  insp.querySelector(".x").addEventListener("click", clearSel);
+  if (hadX) insp.querySelector(".x").focus();
+}
+
+addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  if (sel) clearSel();
+  else if (free.k > 1) { free.k = 1; free.x = 0; free.y = 0; applyCam(); hint(); lod(); declutter(); } else if (zoom) { const z = zoom; zoomTo(null); lbs.get("b:" + z)?.focus({ preventScroll: true }); }
+});
+addEventListener("resize", () => est && fit());
+$("#view").addEventListener("wheel", wheelZoom, { passive: false });
+hint();
+$("#view").addEventListener("pointerdown", dragPan);
+
+// One rAF loop: packets ride the L-shaped cables (transform only).
+let last = 0;
+function frame(ts) {
+  const dt = Math.min(0.1, (ts - last) / 1000 || 0); last = ts;
+  if (!reduce.matches && !stage.hidden) for (const cb of cables.values()) {
+    if (!cb.pkts.length) continue;
+    const [a, m, b] = cb.pts, l1 = Math.abs(m.x - a.x), L = l1 + Math.abs(b.y - m.y) || 1;
+    for (const p of cb.pkts) {
+      p.p = (p.p + dt * cb.speed) % 1;
+      const d = p.p * L, x = d <= l1 ? a.x + Math.sign(m.x - a.x) * d : m.x, y = d <= l1 ? a.y : m.y + Math.sign(b.y - m.y) * (d - l1);
+      p.style.transform = `translate(${(x * U).toFixed(1)}px, ${(y * U).toFixed(1)}px)`;
+    }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+start(update);
+</script>
+</body>
+</html>

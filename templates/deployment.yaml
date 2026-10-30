@@ -17,7 +17,7 @@ spec:
         app: status-design
       annotations:
         # Rolls the pod when any design changes; the ConfigMap name is stable.
-        checksum/designs: {{ printf "%s%s" (.Files.Glob "designs/*.html").AsConfig (.Files.Get "files/nginx.conf") | sha256sum | quote }}
+        checksum/designs: {{ printf "%s%s%s" (.Files.Glob "designs/*.html").AsConfig (.Files.Get "files/nginx.conf") (.Files.Get "scripts/estate_snapshot.py") | sha256sum | quote }}
     spec:
       affinity:
         nodeAffinity:
@@ -54,6 +54,9 @@ spec:
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
               readOnly: true
+            - name: live
+              mountPath: /data
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /index.html
@@ -76,7 +79,52 @@ spec:
             runAsNonRoot: true
             seccompProfile:
               type: RuntimeDefault
+        # Rebuilds /estate-live.json from status.json and the home Mimir every
+        # live.intervalSeconds. On failure the script logs one line and the old file stays.
+        - name: live
+          image: "{{ .Values.live.image }}"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            # The script resolves its own path, which in a ConfigMap mount is a ..data symlink.
+            - name: ESTATE_TOPOLOGY
+              value: /app/designs/estate-topology.json
+          command: ["sh", "-c"]
+          args:
+            - |
+              while :; do
+                if python3 -B /app/scripts/estate_snapshot.py --live > /data/.estate-live.json.tmp; then
+                  mv /data/.estate-live.json.tmp /data/estate-live.json
+                fi
+                sleep {{ .Values.live.intervalSeconds }}
+              done
+          volumeMounts:
+            - name: live
+              mountPath: /data
+            - name: site
+              mountPath: /app/designs
+              readOnly: true
+            - name: live-script
+              mountPath: /app/scripts
+              readOnly: true
+          resources:
+{{ toYaml .Values.live.resources | indent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
+        - name: live
+          emptyDir: {}
+        - name: live-script
+          configMap:
+            name: status-design-live
         - name: site
           configMap:
             name: status-design
