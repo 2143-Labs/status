@@ -230,7 +230,7 @@ const EXIT_NODES = [
 // Machines on the house LAN that are not in the estate feed (it lists k3s nodes and pite). Drawn after the
 // cluster in the machine row, without load bars: nothing reports their usage yet. RFC 1918 only.
 const EXTRA_HOSTS = [
-  { id: "vpin", name: "vpin", site: "house", ip: "192.168.5.118", what: "Raspberry Pi · NixOS aarch64 · wired (enu1u1)", tailnet: "100.64.0.7", state: "up", note: "Runs the Mullvad app and offers the tailnet exit Mullvad US. Not in k3s." },
+  { id: "vpin", name: "vpin", site: "house", ip: "192.168.5.118", what: "Raspberry Pi · NixOS aarch64 · wired (enu1u1)", tailnet: "mullvad-us-vpin-deccam.ts.2143.me", state: "up", note: "Runs the Mullvad app and offers the tailnet exit Mullvad US. Not in k3s." },
 ];
 // Direct (non-Traefik) services: the port each binds, and the interface that reaches it. The WAN rows are the
 // router's dst-nat table plus the Verizon forwards (read-only `print`, 2026-10-29); the internal rows are the
@@ -915,7 +915,7 @@ function inspect() {
       (d.note ? `<p>${esc(d.note)}</p>` : "");
   } else if (sel.t === "h") {
     const m = EXTRA_HOSTS.find((y) => y.id === sel.id), xs = EXIT_NODES.filter((x) => x.node === m.id);
-    h = `<h2>${esc(m.name)}</h2><p><span class="st st-${sk(m.state)}">${stateWord(m.state)}</span> · ${esc(m.what)}</p><p>LAN <span class="net">${esc(m.ip)}</span> · tailnet <span class="net">${esc(m.tailnet)}</span></p>` +
+    h = `<h2>${esc(m.name)}</h2><p><span class="st st-${sk(m.state)}">${stateWord(m.state)}</span> · ${esc(m.what)}</p><p>LAN <span class="net">${esc(m.ip)}</span> · tailnet name <span class="net">${esc(m.tailnet)}</span></p>` +
       (xs.length ? `<p>Exit nodes: ${xs.map((x) => `<b>${esc(x.name)}</b>`).join(", ")}</p>` : "") + `<p>${esc(m.note)}</p><p>Not in the estate feed: no load figures, state is a fixed sample.</p>`;
   } else if (sel.t === "x") {
     const x = EXIT_NODES.find((y) => y.id === sel.id);
