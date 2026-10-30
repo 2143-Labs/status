@@ -2,6 +2,7 @@
 """Build a real `estate` v2 snapshot for the design demos.
 
     python3 scripts/estate_snapshot.py > designs/estate-real.json
+    python3 scripts/estate_snapshot.py --live   # source "live", used by the gallery sidecar
 
 Reads the public status.json (components, history) and the home Mimir (LAN only:
 node specs/utilisation, pod placement and requests). Topology (providers, sites,
@@ -12,6 +13,7 @@ Exit 1: sanitiser found a public IP. Exit 2: a source was unreachable.
 Exit 3: output over 80,000 bytes even with 3 workloads per node.
 """
 import json
+import os
 import re
 import sys
 import time
@@ -19,8 +21,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-STATUS = "https://status-origin.2143.me/status.json"
-MIMIR = "http://192.168.6.23:8080/prometheus/api/v1/query"
+STATUS = os.environ.get("STATUS_URL", "https://status-origin.2143.me/status.json")
+MIMIR = os.environ.get("MIMIR_URL", "http://192.168.6.23:8080/prometheus/api/v1/query")
 HOUSE = ["closet", "arch", "nas", "big", "office", "pite"]
 NODE_META = {  # site, role, arch, lan_ip
     "closet": ("server", "amd64", "192.168.5.36"),
@@ -32,7 +34,8 @@ NODE_META = {  # site, role, arch, lan_ip
 }
 CLOUD_NODES = {"doks-1": "doks", "status-1": "do"}  # topology node id -> Mimir cluster label
 CLOUD_DEV = 'device!~"lo|veth.*|cni.*|flannel.*|lxc.*|cilium.*|anchor|cpbridge"'
-TOPO = json.loads((Path(__file__).resolve().parent.parent / "designs" / "estate-topology.json").read_text(encoding="utf-8"))
+TOPO_PATH = os.environ.get("ESTATE_TOPOLOGY") or Path(__file__).resolve().parent.parent / "designs" / "estate-topology.json"
+TOPO = json.loads(Path(TOPO_PATH).read_text(encoding="utf-8"))
 COMPONENT_ROUTE = {"john2143-com": "home-direct", "files-john2143-com": "home-direct", "2143-me": "do-only",
                    "2143-me-user": "do-only", "i-2143-me": "images", "temporal": "temporal-grpc"}
 QUAD = re.compile(r"(?<![\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.-])")
@@ -90,7 +93,7 @@ def base_name(pod):
     return re.sub(r"-\d+$", "", pod)
 
 
-def build(per_node):
+def build(per_node, live=False):
     status = get(STATUS)
     now = int(time.time())
     cores = {h: int(v) for h, v in per_host('count by (instance)(node_cpu_seconds_total{mode="idle",job="home-nodes"})').items()}
@@ -187,7 +190,7 @@ def build(per_node):
 
     keep = ["generated", "tz", "probe_interval_s", "home_age_s", "sample_age_s", "days_start",
             "hours_start", "latency_start", "groups", "outages"]
-    e = {"v": 2, "source": "snapshot", "scenario": None}
+    e = {"v": 2, "source": "live" if live else "snapshot", "scenario": None}
     e.update({k: status[k] for k in keep})
     e["generated"] = now
     e.update(
@@ -207,9 +210,10 @@ def build(per_node):
 
 
 def main():
+    live = "--live" in sys.argv[1:]
     for per_node in (12, 6, 3):
         try:
-            e = build(per_node)
+            e = build(per_node, live)
         except Exception as exc:  # unreachable source, bad response
             print(f"estate_snapshot: {exc}", file=sys.stderr)
             return 2

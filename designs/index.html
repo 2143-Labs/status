@@ -32,10 +32,9 @@ footer{margin-top:2.5rem;border-top:1px solid var(--line);padding-top:.8rem;colo
     <li><a href="demo-diorama.html">Demo · Diorama</a><p>Isometric estate: buildings are machines, floors are their workloads, the ground is 90 days of history. Drag the timeline to replay.</p></li>
     <li><a href="demo-lab.html">Demo · Lab</a><p>A top-down lab: one building per provider, a room per region. Ingress along the top wall, racks in the middle, services at the bottom; links run between buildings. Toggle Today / Target to see the edge rollout.</p></li>
     <li><a href="demo-flow.html">Demo · Flow</a><p>The request path, live: internet → load balancer → cluster → WireGuard → router → services, with per-hop latency.</p></li>
-    <li><a href="demo-rack.html">Demo · Rack</a><p>Hardware first: each machine as a rack unit, its CPU and RAM packed with the fungible workloads using them.</p></li>
     <li><a href="demo-console.html">Demo · Console</a><p>Keyboard first: press / and type what you want — a node, a metric, "slowest hop", "down 7d".</p></li>
   </ul>
-  <footer>Every PR gets a preview at <code>status-{N}.john2143.com</code>. This page tracks <code>main</code>. Demos take <code>?scenario=</code>, <code>?layout=today|target</code>, <code>?seed=</code>, <code>?speed=</code>, <code>?t=</code> and <code>?plain</code>.</footer>
+  <footer>Every PR gets a preview at <code>status-{N}.john2143.com</code>. This page tracks <code>main</code>. Demos show live data (refreshed every 30 s). Add <code>?source=sim</code> for the simulator, which takes <code>?scenario=</code>, <code>?layout=today|target</code>, <code>?seed=</code>, <code>?speed=</code> and <code>?t=</code>; <code>?plain</code> works in both.</footer>
 </main>
 </body>
 </html>

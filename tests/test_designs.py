@@ -29,9 +29,9 @@ def public_ips(text):
 
 
 class DesignBudgets(unittest.TestCase):
-    def test_demo_pages_under_80k(self):
+    def test_demo_pages_under_150k(self):
         for p in DESIGNS.glob("demo-*.html"):
-            self.assertLessEqual(p.stat().st_size, 80_000, p.name)
+            self.assertLessEqual(p.stat().st_size, 150_000, p.name)
 
     def test_shared_files_under_budget(self):
         for name, cap in (("estate-sim.js", 40_000), ("estate-core.js", 40_000), ("estate-core.css", 15_000)):

@@ -7,7 +7,7 @@
  * Times are unix seconds, sizes bytes, latencies ms.
  *
  * {
- *   v: 2, source: "sim" | "snapshot", scenario: <name> | null (sim only),
+ *   v: 2, source: "sim" | "snapshot" | "live", scenario: <name> | null (sim only),
  *   generated, tz, probe_interval_s, home_age_s (int|null), sample_age_s,
  *   days_start "YYYY-MM-DD", hours_start, latency_start,
  *   groups: [{id, name, note}]                         identical to status.json v1

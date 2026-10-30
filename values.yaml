@@ -20,3 +20,15 @@ resources:
   limits:
     cpu: 100m
     memory: 64Mi
+
+# Sidecar that rebuilds /estate-live.json from status.json and the home Mimir.
+live:
+  image: python:3.12-alpine
+  intervalSeconds: 30
+  resources:
+    requests:
+      cpu: 5m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
