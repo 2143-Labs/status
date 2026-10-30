@@ -32,6 +32,8 @@ stores no plaintext secret.
 
 ## What a deploy is
 
+Before merging, test the change as described in [testing.md](testing.md).
+
 Merging to `main` is the only way to deploy:
 
 1. CI's `test` job runs the suite; `promote` writes the merge SHA into the one-file

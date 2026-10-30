@@ -8,6 +8,7 @@ install -d -m 0755 /etc/status
 install -m 0755 "$src/deploy/apply.sh" /usr/local/sbin/statusd-apply
 install -m 0644 "$src/deploy/Caddyfile" /etc/caddy/Caddyfile
 install -m 0644 "$src"/deploy/systemd/* /etc/systemd/system/
+sh "$src/deploy/install-node-exporter.sh" "$src"
 install -m 0755 "$src/deploy/statusd-backup" /usr/local/sbin/statusd-backup
 install -m 0644 "$src"/config/*.toml /etc/status/
 printf 'STATUS_BUILD_SHA=%s\n' "$(git -C "$src" rev-parse HEAD)" > /etc/status/build.env
