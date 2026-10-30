@@ -87,6 +87,9 @@ spec:
           env:
             - name: PYTHONDONTWRITEBYTECODE
               value: "1"
+            # The script resolves its own path, which in a ConfigMap mount is a ..data symlink.
+            - name: ESTATE_TOPOLOGY
+              value: /app/designs/estate-topology.json
           command: ["sh", "-c"]
           args:
             - |

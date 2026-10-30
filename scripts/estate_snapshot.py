@@ -34,7 +34,8 @@ NODE_META = {  # site, role, arch, lan_ip
 }
 CLOUD_NODES = {"doks-1": "doks", "status-1": "do"}  # topology node id -> Mimir cluster label
 CLOUD_DEV = 'device!~"lo|veth.*|cni.*|flannel.*|lxc.*|cilium.*|anchor|cpbridge"'
-TOPO = json.loads((Path(__file__).resolve().parent.parent / "designs" / "estate-topology.json").read_text(encoding="utf-8"))
+TOPO_PATH = os.environ.get("ESTATE_TOPOLOGY") or Path(__file__).resolve().parent.parent / "designs" / "estate-topology.json"
+TOPO = json.loads(Path(TOPO_PATH).read_text(encoding="utf-8"))
 COMPONENT_ROUTE = {"john2143-com": "home-direct", "files-john2143-com": "home-direct", "2143-me": "do-only",
                    "2143-me-user": "do-only", "i-2143-me": "images", "temporal": "temporal-grpc"}
 QUAD = re.compile(r"(?<![\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.-])")
