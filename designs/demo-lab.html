@@ -39,7 +39,9 @@
 .tile.st.planned{background:transparent;border-style:dashed;opacity:.55}
 .tile.svc{background:var(--panel)}
 .rack{position:absolute;border:1px solid var(--fg);background:var(--panel);display:flex;flex-direction:column;justify-content:flex-end;gap:2px;padding:3px}
-.rack i{display:block;height:4px;border-radius:1px;background:var(--ok)}.rack i.w{background:var(--warn)}.rack i.b{background:var(--bad)}
+.rack i{display:block;height:4px;border-radius:1px;background:var(--ok)}
+/* A machine outside the feed (vpin): dashed, and its bars are grey because nothing reports its load. */
+.rack.extra{border-style:dashed}.rack.extra i{background:var(--line)}.rack i.w{background:var(--warn)}.rack i.b{background:var(--bad)}
 .rack.s-unknown{background:repeating-linear-gradient(45deg,var(--bg) 0 4px,var(--panel) 4px 8px)}
 .rack.s-degraded{border-color:var(--warn);border-width:2px}.rack.s-down{border-color:var(--bad);border-width:2px}
 .cable{position:absolute;background:var(--fg);opacity:.7;contain:layout paint}
@@ -221,7 +223,14 @@ const EXIT_NODES = [
   { id: "mullvad-ee", name: "Mullvad EE", where: "Tallinn", site: "house", node: "big", pod: "ee-mullvad", state: "up" },
   { id: "mullvad-jp", name: "Mullvad JP", where: "Tokyo", site: "house", node: "arch", pod: "jp-mullvad", state: "up" },
   { id: "mullvad-za", name: "Mullvad ZA", where: "South Africa", site: "house", node: "closet", pod: "za-mullvad", state: "down", note: "Pod is Running 2/2, but headscale no longer knows the node (PollNetMap 404 node not found). Re-enrol it." },
-  { id: "mullvad-us", name: "Mullvad US", where: "mullvad-us-vpin-deccam", state: "up", note: "Advertised on the tailnet, but no pod in vpn-endpoints runs it; where it runs is unknown." },
+  // Not a pod: the Mullvad app on vpin, a Raspberry Pi on the house LAN. Its default route is Mullvad's own
+  // WireGuard tunnel, so the tailnet exit leaves the house already encrypted to Mullvad.
+  { id: "mullvad-us", name: "Mullvad US", where: "Ashburn, VA (Mullvad relay us-qas-wg-302)", site: "house", node: "vpin", via: "Mullvad WireGuard, wg0-mullvad", state: "up", note: "The Mullvad app runs on vpin itself (LAN sharing and quantum-resistant tunnel on), and Tailscale advertises it as an exit. Fixed sample from `mullvad status`, 2026-10-30." },
+];
+// Machines on the house LAN that are not in the estate feed (it lists k3s nodes and pite). Drawn after the
+// cluster in the machine row, without load bars: nothing reports their usage yet. RFC 1918 only.
+const EXTRA_HOSTS = [
+  { id: "vpin", name: "vpin", site: "house", ip: "192.168.5.118", what: "Raspberry Pi · NixOS aarch64 · wired (enu1u1)", tailnet: "100.64.0.7", state: "up", note: "Runs the Mullvad app and offers the tailnet exit Mullvad US. Not in k3s." },
 ];
 // Direct (non-Traefik) services: the port each binds, and the interface that reaches it. The WAN rows are the
 // router's dst-nat table plus the Verizon forwards (read-only `print`, 2026-10-29); the internal rows are the
@@ -295,7 +304,7 @@ function build(e) {
   const nodeIds = new Set(e.nodes.map((n) => n.id)), alias = (s) => nodeIds.has(s.id);
   // The Traefik VIP is not a machine: it gets its own band, out of the kube platform.
   const vip = (sid) => e.stations.filter((s) => s.site === sid && s.kind === "vip");
-  const compute = (sid) => [...e.nodes.filter((n) => n.site === sid).map((n) => ({ n })), ...e.stations.filter((s) => s.site === sid && s.tier === "compute" && s.kind !== "vip" && !alias(s)).map((s) => ({ s }))];
+  const compute = (sid) => [...e.nodes.filter((n) => n.site === sid).map((n) => ({ n })), ...e.stations.filter((s) => s.site === sid && s.tier === "compute" && s.kind !== "vip" && !alias(s)).map((s) => ({ s })), ...EXTRA_HOSTS.filter((h) => h.site === sid).map((h) => ({ h }))];
   const RH = ROW_H + 0.66, isKube = (n) => n.role === "server" || n.role === "agent";
   const service = (sid) => e.components.filter((c) => serviceSite(e, c) === sid).map((c) => ({ c }));
   // A room with nothing in its service row lays out on one row: ingress, then its machines beside it.
@@ -353,6 +362,8 @@ function build(e) {
           if (o.n) {
             const r = div("rack", fp, put("n:" + o.n.id, m0 + i, mY)); r.innerHTML = "<i></i><i></i><i></i>"; els.set("n:" + o.n.id, r);
             if (nodeIds.has(o.n.id)) { pos.set("st:" + o.n.id, pos.get("n:" + o.n.id)); els.set("st:" + o.n.id, r); }
+          } else if (o.h) {
+            const r = div("rack extra s-" + sk(o.h.state), fp, put("n:" + o.h.id, m0 + i, mY)); r.innerHTML = "<i></i><i></i><i></i>"; els.set("n:" + o.h.id, r);
           } else els.set("st:" + o.s.id, div("tile st", fp, put("st:" + o.s.id, m0 + i, mY)));
         });
         const kn = cs.map((o, i) => (o.n && isKube(o.n) ? i : -1)).filter((i) => i >= 0);
@@ -478,6 +489,14 @@ function build(e) {
   };
   for (const x of DERP) hostLink("dp:" + x.id, "dp:" + x.id);
   for (const x of EXIT_NODES) hostLink("xn:" + x.id, "x:" + x.id);
+  // The LAN leg from a home exit's host up to the MikroTik. Racks have no drawn uplinks (every machine is on the
+  // LAN), so this is only shown while that exit is selected; otherwise the lit path would break at the rack.
+  for (const x of EXIT_NODES) {
+    const r = x.node && pos.get("n:" + x.node), g = pos.get("st:router"); if (!r || !g || x.site !== "house") continue;
+    const y0 = r.y - 1, y1 = g.y + 1, ym = (y0 + y1) / 2;
+    const pts = Math.abs(r.x - g.x) < 0.05 ? [{ x: r.x, y: y0 }, { x: g.x, y: y1 }] : [{ x: r.x, y: y0 }, { x: r.x, y: ym }, { x: g.x, y: ym }, { x: g.x, y: y1 }];
+    cables.set("xu:" + x.id, { segs: wire("cable k-lan ts-link", pts), pts, len: 0, pkts: [] });
+  }
   for (const c of e.components) {
     const h = e.hops.find((x) => x.id === c.via[c.via.length - 1]);
     const a = h && pos.get("st:" + h.to), b = pos.get("c:" + c.id);
@@ -517,6 +536,7 @@ function build(e) {
       label("room:" + sid, "rm", "", () => zoomTo(bk), "rm", bk);
       for (const st of e.stations.filter((x) => x.site === sid && x.tier === "ingress")) label("st:" + st.id, "sign", "", () => select("st", st.id), "d", bk);
       for (const n of e.nodes.filter((x) => x.site === sid)) label("n:" + n.id, "", "", () => select("n", n.id), "d", bk);
+      for (const h of EXTRA_HOSTS.filter((x) => x.site === sid)) label("n:" + h.id, "", `<b>${esc(h.name)}</b>`, () => select("h", h.id), "d", bk);
       for (const st of e.stations.filter((x) => x.site === sid && x.tier === "compute" && x.kind !== "vip" && !nodeIds.has(x.id))) label("st:" + st.id, "", "", () => select("st", st.id), "d", bk);
       for (const st of e.stations.filter((x) => x.site === sid && x.kind === "vip")) label("st:" + st.id, "vip", "", () => select("st", st.id), "rm", bk);
       const kp = pos.get("kube:" + sid);
@@ -636,6 +656,7 @@ function crumb() {
     const site = sel.t === "n" ? est.nodes.find((n) => n.id === sel.id)?.site : sel.t === "st" ? est.stations.find((s) => s.id === sel.id)?.site : sel.t === "c" ? serviceSite(est, est.components.find((c) => c.id === sel.id)) : null;
     if (sel.t === "x" || sel.t === "dp") parts.push("Tailscale");
     if (sel.t === "sv") parts.push("Direct services");
+    if (sel.t === "h") parts.push(esc(est.sites.find((s) => s.id === EXTRA_HOSTS.find((x) => x.id === sel.id)?.site)?.name || ""));
     if (site) parts.push(esc(est.sites.find((s) => s.id === site)?.name || site));
   }
   $("#crumb").innerHTML = parts.join(" › ");
@@ -832,6 +853,7 @@ function highlight() {
     $("#cam").classList.add("dim");
     els.get("x:" + xn.id)?.classList.add("on");
     cables.get("xn:" + xn.id)?.segs.forEach((s) => s.classList.add("on"));
+    cables.get("xu:" + xn.id)?.segs.forEach((s) => s.classList.add("on"));
     for (const k of exitPath(xn).keys) els.get(k)?.classList.add("on");
     for (const h of exitPath(xn).hops) cables.get(h)?.segs.forEach((s) => s.classList.add("on"));
     return;
@@ -844,9 +866,9 @@ function highlight() {
 }
 // An exit node's physical way out: the rack its pod runs on, then that rack's site's hops to the internet.
 function exitPath(x) {
-  const n = x.node && est.nodes.find((y) => y.id === x.node);
+  const n = x.node && (est.nodes.find((y) => y.id === x.node) || EXTRA_HOSTS.find((y) => y.id === x.node));
   if (!n && !x.at) return { keys: [], hops: [], names: [], n: null };
-  const keys = n ? ["n:" + n.id] : [], hops = [], names = n ? [n.name] : [];
+  const keys = n ? ["n:" + n.id] : [], hops = [], names = n ? [n.name + (x.via ? ` (inside ${x.via})` : "")] : [];
   // Walk upstream to the internet: a home rack goes out via the router (<- verizon <- internet); a cloud
   // exit starts at its own station (doks <- DO load balancer <- internet).
   let at = n ? "router" : x.at;
@@ -891,11 +913,15 @@ function inspect() {
       (d.g === 1 ? `<p>Path in: internet → Verizon CR1000B (forward <span class="net">${esc(d.f)}</span>) → MikroTik WAN → dst-nat → <span class="net">${esc(d.ip)}</span>.</p>` : "") +
       (d.wg ? `<p>The DigitalOcean cluster reaches it on <span class="net">wg-remote</span>: an explicit forward allow sits above the tunnel's default deny.</p>` : "") +
       (d.note ? `<p>${esc(d.note)}</p>` : "");
+  } else if (sel.t === "h") {
+    const m = EXTRA_HOSTS.find((y) => y.id === sel.id), xs = EXIT_NODES.filter((x) => x.node === m.id);
+    h = `<h2>${esc(m.name)}</h2><p><span class="st st-${sk(m.state)}">${stateWord(m.state)}</span> · ${esc(m.what)}</p><p>LAN <span class="net">${esc(m.ip)}</span> · tailnet <span class="net">${esc(m.tailnet)}</span></p>` +
+      (xs.length ? `<p>Exit nodes: ${xs.map((x) => `<b>${esc(x.name)}</b>`).join(", ")}</p>` : "") + `<p>${esc(m.note)}</p><p>Not in the estate feed: no load figures, state is a fixed sample.</p>`;
   } else if (sel.t === "x") {
     const x = EXIT_NODES.find((y) => y.id === sel.id);
-    const ep = exitPath(x), st = ep.n && !x.pod && ep.n.state !== "up" ? ep.n.state : x.state;
+    const ep = exitPath(x), st = ep.n && !x.pod && ep.n.state && ep.n.state !== "up" ? ep.n.state : x.state;
     h = `<h2>Exit node ${esc(x.name)}</h2><p><span class="st st-${sk(st)}">${stateWord(st)}</span> · ${esc(x.where)}</p>` +
-      (ep.names.length ? (ep.n ? `<p>${x.pod ? `Pod <span class="net">vpn-endpoints/${esc(x.pod)}</span>, last seen on rack` : "Runs on the rack itself:"} <b>${esc(ep.n.name)}</b> <span class="st st-${sk(ep.n.state)}">${stateWord(ep.n.state)}</span>.${x.pod ? " Kubernetes moves it to another rack if this one goes down." : ""}</p>` : "") +
+      (ep.names.length ? (ep.n ? `<p>${x.pod ? `Pod <span class="net">vpn-endpoints/${esc(x.pod)}</span>, last seen on rack` : x.via ? "Runs as an app on" : "Runs on the rack itself:"} <b>${esc(ep.n.name)}</b> <span class="st st-${sk(ep.n.state)}">${stateWord(ep.n.state)}</span>.${x.pod ? " Kubernetes moves it to another rack if this one goes down." : ""}</p>` : "") +
         `<p>Physical path: ${ep.names[0] === x.name ? "" : `<b>${esc(x.name)}</b> ⇐ ${x.pod ? "WireGuard ⇐ " : ""}`}${ep.names.map((v, i) => (i || ep.names[0] !== x.name ? esc(v) : `<b>${esc(v)}</b>`)).join(" → ")}</p>`
         : `<p>Physical path unknown.</p>`) +
       (x.note ? `<p>${esc(x.note)}</p>` : "") + `<p>Status is a fixed sample until the tailnet is reported.</p>`;
