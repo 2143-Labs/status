@@ -14,6 +14,11 @@
 .wrap{display:grid;grid-template-columns:minmax(0,1fr) 20rem;gap:1rem;align-items:start}
 .view{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
 .cam{position:relative;transform-origin:0 0;transition:transform .4s ease}
+.cam.wheel{transition:none}
+/* Wheel-zoom detail fades in and out rather than popping. */
+.lb.wz{animation:wzin .18s ease}
+@keyframes wzin{from{opacity:0}to{opacity:1}}
+.zhint{position:absolute;right:.6rem;bottom:.5rem;font-size:.72rem;color:var(--muted);background:color-mix(in srgb,var(--bg) 85%,transparent);padding:.1rem .4rem;border-radius:4px;pointer-events:none}
 /* The 2D isometric floor plan: carries no text. */
 .floorplan{position:absolute;left:0;top:0;transform-origin:0 0;transform:matrix(.866,.5,-.866,.5,0,0);transition:transform .4s ease}
 /* Zoomed in, the plan lies flat (top-down) so rows and tiles read as a straight floor plan. */
@@ -142,7 +147,7 @@
   <p class="legend"><span><i class="cable k-public"></i>Internet</span><span><i class="cable k-lan"></i>Local network</span><span><i class="cable k-tunnel"></i>Encrypted tunnel (WireGuard / Tailscale)</span><span><i class="kube"></i>k3s cluster</span><span><b class="lg-ts">△</b>Tailscale exit node</span><span><b class="lg-ts">◇</b>DERP relay</span></p>
   <div class="wrap">
     <div class="view" id="view"><div class="cam" id="cam"><div class="floorplan" id="fp" aria-hidden="true"></div><div class="ov" id="ov"></div></div></div>
-    <aside class="insp" id="insp" aria-live="polite"><p>Each building is a provider, each room a region. Top row: ingress. Middle: racks (machines) and compute. Bottom: services. Select anything to inspect; Enter on a building zooms in; Esc steps back out.</p></aside>
+    <aside class="insp" id="insp" aria-live="polite"><p>Each building is a provider, each room a region. Top row: ingress. Middle: racks (machines) and compute. Bottom: services. Select anything to inspect; Enter on a building zooms in; scroll to zoom anywhere, drag to pan; Esc steps back out.</p></aside>
   </div>
 </main>
 <section id="plain" class="plain" aria-labelledby="plain-h"><h2 id="plain-h">All data as tables</h2></section>
@@ -183,6 +188,9 @@ const U = 24;                          // px per tile in floor-plan space
 const SITE_ORDER = ["isp-lan", "house", "nyc1", "tor1", "ash", "do-edge"];
 const ROW_H = 3, PAD = 1, GAP = 3;     // tiles
 let est = null, built = "", sel = null, zoom = null, OX = 0, OY = 0;
+// Free camera from the mouse wheel, on top of the fitted view: extra scale k (1 = fitted) and a pan in view px.
+const free = { k: 1, x: 0, y: 0 };
+const K_MAX = 6, K_DETAIL = 1.7;   // beyond K_DETAIL the whole plan shows its detail labels, as a building zoom does
 const pos = new Map();                 // entity key -> {x,y} tile centre in floor-plan space
 const els = new Map();                 // entity key -> floor-plan element
 const lbs = new Map();                 // entity key -> overlay button
@@ -206,8 +214,8 @@ const DERP = [
 const EXIT_NODES = [
   { id: "nas", name: "nas", where: "Home", site: "house", node: "nas", state: "up" },
   { id: "doks-us-nyc", name: "doks-us-nyc", where: "DOKS, DigitalOcean nyc1", site: "nyc1", at: "doks", state: "up" },
-  // Mullvad exits are tailscale+gluetun pods in vpn-endpoints: `node` is the rack the pod runs on (pods move; this
-  // is a kubectl sample from 2026-10-29). State is the tailnet's view, not the pod's: za is Running but headscale
+  // Mullvad exits are tailscale+gluetun pods in vpn-endpoints: `node` is the rack the pod last ran on (a kubectl
+  // sample from 2026-10-29). Pods are rescheduled when a rack fails, so this is where it was, not where it must be. State is the tailnet's view, not the pod's: za is Running but headscale
   // answers its polls with 404 node not found, so it is not an exit node at all.
   { id: "mullvad-de", name: "Mullvad DE", where: "Düsseldorf", site: "house", node: "nas", pod: "de-mullvad", state: "up" },
   { id: "mullvad-ee", name: "Mullvad EE", where: "Tallinn", site: "house", node: "big", pod: "ee-mullvad", state: "up" },
@@ -537,13 +545,15 @@ function build(e) {
 
 // Level of detail: which labels are visible (and tabbable) right now.
 function lod() {
+  const deep = free.k >= K_DETAIL;
   for (const l of lbs.values()) {
-    const lvl = l.dataset.lvl;
+    const lvl = l.dataset.lvl, was = !l.hidden;
     let show = lvl === "b" || lvl === "rm" || lvl === "o";
-    if (lvl === "d") show = zoom ? l.dataset.bk === zoom : l.classList.contains("alarm");
+    if (lvl === "d") show = deep || (zoom ? l.dataset.bk === zoom : l.classList.contains("alarm"));
     if (lvl === "h") show = l.classList.contains("alarm") && (!zoom || l.dataset.bk === zoom);
     if (lvl === "rm" && zoom && l.dataset.bk !== zoom) show = false;
     l.hidden = show === false;
+    if (!was && !l.hidden) { l.classList.remove("wz"); void l.offsetWidth; l.classList.add("wz"); }
   }
 }
 
@@ -555,23 +565,61 @@ function fit() {
   $("#view").style.height = parseFloat(cam.style.height) * base + "px";
   applyCam();
 }
-function applyCam() {
+// The camera's fitted transform (overview or zoomed building), then the wheel's free zoom and pan on top.
+function camFit() {
   const base = +cam.dataset.base || 1;
-  if (!zoom || !bbox.get(zoom)) { cam.style.transform = `scale(${base})`; cam.style.setProperty("--inv", 1 / base); return; }
+  if (!zoom || !bbox.get(zoom)) return { s: base, tx: 0, ty: 0 };
   const bb = bbox.get(zoom), vw = $("#view").clientWidth, vh = $("#view").clientHeight;
   // Fit the zoomed building's projected box into the view, with a margin for labels.
   const cs = [[bb.x, bb.y], [bb.x + bb.w, bb.y], [bb.x, bb.y + bb.h], [bb.x + bb.w, bb.y + bb.h]].map(([x, y]) => project(x, y));
   const x0 = Math.min(...cs.map((c) => c.x)), x1 = Math.max(...cs.map((c) => c.x)), y0 = Math.min(...cs.map((c) => c.y)), y1 = Math.max(...cs.map((c) => c.y));
   const s = Math.min((vw * 0.92) / (x1 - x0), (vh * 0.88) / (y1 - y0), flat ? 2.2 : base * 1.8);
-  cam.style.transform = `translate(${vw / 2 - ((x0 + x1) / 2) * s}px, ${vh / 2 - ((y0 + y1) / 2) * s}px) scale(${s})`;
+  return { s, tx: vw / 2 - ((x0 + x1) / 2) * s, ty: vh / 2 - ((y0 + y1) / 2) * s };
+}
+function applyCam() {
+  const f = camFit(), s = f.s * free.k, tx = f.tx * free.k + free.x, ty = f.ty * free.k + free.y;
+  cam.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
   cam.style.setProperty("--inv", 1 / s);
+}
+// Mouse wheel / trackpad pinch: zoom about the cursor. The point under the pointer stays under it.
+function wheelZoom(ev) {
+  if (!est) return;
+  ev.preventDefault();
+  const r = $("#view").getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  const k = Math.min(K_MAX, Math.max(1, free.k * Math.exp(-ev.deltaY * (ev.ctrlKey ? 0.01 : 0.0015))));
+  // Wheeling out at 1x inside a building steps back to the whole plan, like Esc.
+  if (k === 1 && free.k === 1 && ev.deltaY > 0 && zoom) { clearTimeout(wheelZoom.o); wheelZoom.o = setTimeout(() => zoomTo(null), 0); return; }
+  if (k === free.k) return;
+  const f = camFit(), was = free.k >= K_DETAIL;
+  // screen = f.t * k + free + plan * f.s * k; keep (mx,my) fixed.
+  const px0 = (mx - free.x - f.tx * free.k) / (f.s * free.k), py0 = (my - free.y - f.ty * free.k) / (f.s * free.k);
+  free.k = k;
+  if (k === 1) { free.x = 0; free.y = 0; } else { free.x = mx - f.tx * k - px0 * f.s * k; free.y = my - f.ty * k - py0 * f.s * k; }
+  cam.classList.add("wheel"); clearTimeout(wheelZoom.t); wheelZoom.t = setTimeout(() => cam.classList.remove("wheel"), 120);
+  applyCam(); hint();
+  // Labels only re-place when detail crosses its threshold, or when the wheel settles (keeps scrolling smooth).
+  if ((free.k >= K_DETAIL) !== was) { lod(); declutter(); }
+  clearTimeout(wheelZoom.d); wheelZoom.d = setTimeout(() => { lod(); declutter(); }, 160);
+}
+// Drag to pan while wheel-zoomed in.
+function dragPan(ev) {
+  if (free.k === 1 || ev.button !== 0 || ev.target.closest(".lb,.hot")) return;
+  const sx = ev.clientX, sy = ev.clientY, ox = free.x, oy = free.y;
+  cam.classList.add("wheel"); $("#view").setPointerCapture(ev.pointerId);
+  const mv = (e) => { free.x = ox + e.clientX - sx; free.y = oy + e.clientY - sy; applyCam(); };
+  const up = () => { $("#view").removeEventListener("pointermove", mv); cam.classList.remove("wheel"); declutter(); };
+  $("#view").addEventListener("pointermove", mv); $("#view").addEventListener("pointerup", up, { once: true });
+}
+function hint() {
+  let h = $("#zhint"); if (!h) { h = div("zhint", $("#view")); h.id = "zhint"; }
+  h.textContent = free.k > 1 ? `${Math.round(free.k * 100)}% · drag to pan · Esc to reset` : "Scroll to zoom";
 }
 // Put every label back on its anchor for the current projection.
 function reanchor() {
   for (const l of lbs.values()) { const p = pos.get(l.pk); if (!p) continue; const q = project(p.x, p.y); l.bx = q.x; l.by = q.y; l.style.left = q.x + "px"; l.style.top = q.y + "px"; }
 }
 function zoomTo(pid) {
-  zoom = pid;
+  zoom = pid; free.k = 1; free.x = 0; free.y = 0; hint();
   const nf = FLAT_ZOOM && !!pid;
   if (nf !== flat) {
     flat = nf; fp.classList.toggle("flat", flat);
@@ -661,8 +709,9 @@ function update(e) {
   }
   for (const x of EXIT_NODES) {
     const l = lbs.get("x:" + x.id), t = els.get("x:" + x.id); if (!l) continue;
-    // A hosted exit is only as up as the rack its pod runs on.
-    const rk = x.node && est.nodes.find((n) => n.id === x.node), xs = rk && rk.state !== "up" && x.state === "up" ? rk.state : x.state;
+    // Mullvad pods are rescheduled when their rack goes down, so a down rack does not take the exit with it:
+    // the exit's own state stands. (nas's exit is the rack itself, so that one does follow its rack.)
+    const rk = x.node && est.nodes.find((n) => n.id === x.node), xs = rk && !x.pod && rk.state !== "up" && x.state === "up" ? rk.state : x.state;
     l.className = `lb ${l.classList.contains("tip") ? "tip " : ""}s-${sk(xs)}${xs !== "up" ? " alarm" : ""}`;
     l.innerHTML = `${esc(x.name)} <span class="st st-${sk(xs)}">${stateWord(xs)}</span>${rk ? ` <span class="via">on ${esc(rk.name)}</span>` : ""}`;
     t.className = `tile xn s-${sk(xs)}`;
@@ -844,9 +893,9 @@ function inspect() {
       (d.note ? `<p>${esc(d.note)}</p>` : "");
   } else if (sel.t === "x") {
     const x = EXIT_NODES.find((y) => y.id === sel.id);
-    const ep = exitPath(x), st = ep.n && ep.n.state !== "up" ? ep.n.state : x.state;
+    const ep = exitPath(x), st = ep.n && !x.pod && ep.n.state !== "up" ? ep.n.state : x.state;
     h = `<h2>Exit node ${esc(x.name)}</h2><p><span class="st st-${sk(st)}">${stateWord(st)}</span> · ${esc(x.where)}</p>` +
-      (ep.names.length ? (ep.n ? `<p>${x.pod ? `Pod <span class="net">vpn-endpoints/${esc(x.pod)}</span> on rack` : "Runs on the rack itself:"} <b>${esc(ep.n.name)}</b> <span class="st st-${sk(ep.n.state)}">${stateWord(ep.n.state)}</span>.</p>` : "") +
+      (ep.names.length ? (ep.n ? `<p>${x.pod ? `Pod <span class="net">vpn-endpoints/${esc(x.pod)}</span>, last seen on rack` : "Runs on the rack itself:"} <b>${esc(ep.n.name)}</b> <span class="st st-${sk(ep.n.state)}">${stateWord(ep.n.state)}</span>.${x.pod ? " Kubernetes moves it to another rack if this one goes down." : ""}</p>` : "") +
         `<p>Physical path: ${ep.names[0] === x.name ? "" : `<b>${esc(x.name)}</b> ⇐ ${x.pod ? "WireGuard ⇐ " : ""}`}${ep.names.map((v, i) => (i || ep.names[0] !== x.name ? esc(v) : `<b>${esc(v)}</b>`)).join(" → ")}</p>`
         : `<p>Physical path unknown.</p>`) +
       (x.note ? `<p>${esc(x.note)}</p>` : "") + `<p>Status is a fixed sample until the tailnet is reported.</p>`;
@@ -866,9 +915,13 @@ function inspect() {
 
 addEventListener("keydown", (ev) => {
   if (ev.key !== "Escape") return;
-  if (sel) clearSel(); else if (zoom) { const z = zoom; zoomTo(null); lbs.get("b:" + z)?.focus({ preventScroll: true }); }
+  if (sel) clearSel();
+  else if (free.k > 1) { free.k = 1; free.x = 0; free.y = 0; applyCam(); hint(); lod(); declutter(); } else if (zoom) { const z = zoom; zoomTo(null); lbs.get("b:" + z)?.focus({ preventScroll: true }); }
 });
 addEventListener("resize", () => est && fit());
+$("#view").addEventListener("wheel", wheelZoom, { passive: false });
+hint();
+$("#view").addEventListener("pointerdown", dragPan);
 
 // One rAF loop: packets ride the L-shaped cables (transform only).
 let last = 0;
