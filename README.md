@@ -37,12 +37,22 @@ a ReferenceGrant lets them reach the Service in the release namespace.
 
 1. Drop `designs/<name>.html` in a PR. Link it from `designs/index.html`.
 2. Open the PR; the bot-applied Application appears within ~2 minutes.
-3. Review at `https://status-<PR number>.john2143.com/<name>.html`.
+3. Review at `https://status-<PR number>.john2143.com/<name>.html` (how previews work and how to test any change: [docs/testing.md](docs/testing.md)).
 4. Merge. It is live at `https://status.john2143.com/<name>.html`.
 
 Design rules: self-contained single file (no external requests, no fonts, no
 CDN), works without JavaScript, light and dark via `prefers-color-scheme`,
 status never colour-only, and no IP addresses or internal hostnames.
+
+## Live data
+
+The gallery pod runs a `live` sidecar that executes `scripts/estate_snapshot.py --live`
+every 30 s and writes `/estate-live.json` (components from the droplet's public
+`status.json`, machines and pods from the home Mimir at `192.168.6.23:8080`). Demo pages
+load it by default and re-fetch it every 30 s; if it is missing they fall back to
+`estate-real.json`, then the simulator, and say so. `?source=sim` forces the simulator.
+Only the `today` layout exists in real data, so Target needs `?source=sim`.
+Check it: `curl -s https://status.john2143.com/estate-live.json | jq .generated`.
 
 ## Layout
 
