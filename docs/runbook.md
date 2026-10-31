@@ -1,8 +1,10 @@
 # Runbook — status.2143.me
 
 `status.2143.me` runs on its own DigitalOcean droplet (`tor1`, `s-1vcpu-512mb-10gb`,
-reserved IP). The home cluster no longer serves it, and there is no SSH: incoming
-port 22 is not in the firewall at all.
+reserved IP). `status-origin.2143.me` resolves to the same reserved IP; both names are
+served by the same Caddy site, and `status-origin` is kept as the origin name. The
+home route (argo `workloads/gateway/status-route.yaml`) still exists as the rollback
+path until it is retired. There is no SSH: incoming port 22 is not in the firewall at all.
 
 ## What runs where
 

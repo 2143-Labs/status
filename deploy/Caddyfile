@@ -4,7 +4,7 @@
 	}
 }
 
-status-origin.2143.me {
+status.2143.me, status-origin.2143.me {
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=86400"
