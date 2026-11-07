@@ -1,0 +1,333 @@
+{
+  "v": 1,
+  "source": "sample",
+  "generated": 1794074100,
+  "interval_s": 60,
+  "github": { "ok": true, "error": null },
+  "games": [
+    {
+      "id": "rots",
+      "name": "Revenge of the Sunfish",
+      "kind": "game",
+      "url": "https://rots.john2143.com",
+      "repo": "2143-Labs/rots4",
+      "state": "up",
+      "servers": 3,
+      "envs": [
+        {
+          "id": "prod",
+          "name": "Production",
+          "ns": "rots-prod",
+          "url": "https://rots.john2143.com",
+          "state": "up",
+          "argo": { "app": "rots-web", "sync": "Synced", "health": "Healthy" },
+          "services": [
+            { "name": "web", "role": "web", "ready": 1, "desired": 1, "min": 1, "max": 1, "state": "up", "err_ratio": 0.0012, "req_rate": 1.2 },
+            { "name": "authserver", "role": "api", "ready": 2, "desired": 2, "min": 1, "max": 3, "state": "up", "err_ratio": 0.002, "req_rate": 1.1 },
+            { "name": "game servers", "role": "game", "ready": 2, "desired": 2, "min": null, "max": null, "state": "up", "err_ratio": null, "req_rate": null },
+            { "name": "postgres", "role": "db", "ready": 1, "desired": 1, "min": null, "max": null, "state": "up", "err_ratio": null, "req_rate": null }
+          ],
+          "fleet": { "slots": 64, "instances": 2, "ready": 2, "players": 5, "warm": 0 }
+        }
+      ],
+      "prs": [
+        {
+          "number": 48,
+          "title": "Add a lobby ping to the guest handshake",
+          "draft": false,
+          "url": "https://github.com/2143-Labs/rots4/pull/48",
+          "updated": 1794072000,
+          "preview": { "url": "https://rots-48.john2143.com", "ns": "rots-pr-48", "state": "up" }
+        },
+        {
+          "number": 51,
+          "title": "Bump tokio to 1.42 and re-run the integration suite",
+          "draft": false,
+          "url": "https://github.com/2143-Labs/rots4/pull/51",
+          "updated": 1794060000,
+          "preview": null
+        },
+        {
+          "number": 53,
+          "title": "Draft: split the matchmaker into its own worker",
+          "draft": true,
+          "url": "https://github.com/2143-Labs/rots4/pull/53",
+          "updated": 1794051000,
+          "preview": { "url": "https://rots-53.john2143.com", "ns": "rots-pr-53", "state": "asleep" }
+        }
+      ]
+    },
+    {
+      "id": "dino",
+      "name": "Dino Dash (PRIMAL)",
+      "kind": "game",
+      "url": "https://dino.dsstar.us",
+      "repo": "2143-Labs/Dino-Dash",
+      "state": "asleep",
+      "servers": 0,
+      "envs": [
+        {
+          "id": "prod",
+          "name": "Production",
+          "ns": "dino-prod",
+          "url": "https://dino.dsstar.us",
+          "state": "asleep",
+          "argo": { "app": "dino-prod", "sync": "Synced", "health": "Healthy" },
+          "services": [
+            { "name": "world server", "role": "game", "ready": 0, "desired": 0, "min": 0, "max": 1, "state": "asleep", "err_ratio": null, "req_rate": null },
+            { "name": "web", "role": "web", "ready": 0, "desired": 0, "min": 0, "max": 1, "state": "asleep", "err_ratio": null, "req_rate": null }
+          ],
+          "fleet": null
+        },
+        {
+          "id": "dev",
+          "name": "Dev",
+          "ns": "dino-dev",
+          "url": "https://dino-dev.dsstar.us",
+          "state": "up",
+          "argo": { "app": "dino-dev", "sync": "Synced", "health": "Healthy" },
+          "services": [
+            { "name": "world server", "role": "game", "ready": 1, "desired": 1, "min": 0, "max": 1, "state": "up", "err_ratio": null, "req_rate": null },
+            { "name": "web", "role": "web", "ready": 1, "desired": 1, "min": 0, "max": 1, "state": "up", "err_ratio": 0.0, "req_rate": 0.2 }
+          ],
+          "fleet": null
+        }
+      ],
+      "prs": [
+        {
+          "number": 37,
+          "title": "Fix the lighthouse dash timing",
+          "draft": false,
+          "url": "https://github.com/2143-Labs/Dino-Dash/pull/37",
+          "updated": 1794055000,
+          "preview": { "url": "https://dino-37.dsstar.us", "ns": "dino-pr-37", "state": "unknown" }
+        }
+      ]
+    },
+    {
+      "id": "moss",
+      "name": "Moss & Wool",
+      "kind": "game",
+      "url": "https://moss.dsstar.us",
+      "repo": "2143-Labs/Moss-And-Wool",
+      "state": "down",
+      "servers": 0,
+      "envs": [
+        {
+          "id": "prod",
+          "name": "Production",
+          "ns": "moss-prod",
+          "url": "https://moss.dsstar.us",
+          "state": "down",
+          "argo": { "app": "moss-prod", "sync": "Synced", "health": "Degraded" },
+          "services": [
+            { "name": "web", "role": "web", "ready": 0, "desired": 1, "min": 1, "max": 1, "state": "down", "err_ratio": null, "req_rate": null }
+          ],
+          "fleet": null
+        },
+        {
+          "id": "dev",
+          "name": "Dev",
+          "ns": "moss-dev",
+          "url": "https://moss-dev.dsstar.us",
+          "state": "degraded",
+          "argo": { "app": "moss-dev", "sync": "Synced", "health": "Healthy" },
+          "services": [
+            { "name": "web", "role": "web", "ready": 1, "desired": 1, "min": 0, "max": 1, "state": "up", "err_ratio": 0.09, "req_rate": 0.4 }
+          ],
+          "fleet": null
+        }
+      ],
+      "prs": [
+        {
+          "number": 22,
+          "title": "Cache the texture atlas at build time",
+          "draft": false,
+          "url": "https://github.com/2143-Labs/Moss-And-Wool/pull/22",
+          "updated": 1794040000,
+          "preview": null
+        }
+      ]
+    },
+    {
+      "id": "steam-lobby",
+      "name": "Steam Lobby (UMVC3)",
+      "kind": "game",
+      "url": "https://pvp.john2143.com",
+      "repo": "2143-Labs/steam-lobby",
+      "state": "up",
+      "servers": 2,
+      "envs": [
+        {
+          "id": "prod",
+          "name": "Production",
+          "ns": "steam-lobby",
+          "url": "https://pvp.john2143.com",
+          "state": "up",
+          "argo": { "app": "steam-lobby", "sync": "Synced", "health": "Healthy" },
+          "services": [
+            { "name": "lobby", "role": "game", "ready": 1, "desired": 1, "min": 1, "max": 2, "state": "up", "err_ratio": 0.0, "req_rate": 0.05 },
+            { "name": "relay", "role": "voice", "ready": 1, "desired": 1, "min": 1, "max": 1, "state": "up", "err_ratio": null, "req_rate": null },
+            { "name": "db", "role": "db", "ready": 2, "desired": 2, "min": null, "max": null, "state": "up", "err_ratio": null, "req_rate": null }
+          ],
+          "fleet": null
+        }
+      ],
+      "prs": [
+        {
+          "number": 15,
+          "title": "Relay: prefer the closest coturn node",
+          "draft": false,
+          "url": "https://github.com/2143-Labs/steam-lobby/pull/15",
+          "updated": 1794063000,
+          "preview": { "url": "https://pvp-15.john2143.com", "ns": "steam-lobby-pr-15", "state": "up" }
+        }
+      ]
+    },
+    {
+      "id": "how-poe-sale",
+      "name": "how.poe.sale",
+      "kind": "tool",
+      "url": "https://how.john2143.com",
+      "repo": "2143-Labs/how.poe.sale",
+      "state": "up",
+      "servers": 0,
+      "envs": [
+        {
+          "id": "prod",
+          "name": "Production",
+          "ns": "how-poe-sale",
+          "url": "https://how.john2143.com",
+          "state": "up",
+          "argo": { "app": "how-poe-sale", "sync": "Synced", "health": "Healthy" },
+          "services": [
+            { "name": "web", "role": "web", "ready": 1, "desired": 1, "min": 1, "max": 2, "state": "up", "err_ratio": 0.0, "req_rate": 0.3 }
+          ],
+          "fleet": null
+        }
+      ],
+      "prs": []
+    },
+    {
+      "id": "factorio",
+      "name": "Factorio",
+      "kind": "server",
+      "url": "https://factorio.john2143.com",
+      "repo": null,
+      "state": "off",
+      "servers": 0,
+      "envs": [
+        {
+          "id": "prod",
+          "name": "Production",
+          "ns": "default",
+          "url": "https://factorio.john2143.com",
+          "state": "off",
+          "argo": { "app": "factorio", "sync": "Synced", "health": "Healthy" },
+          "services": [
+            { "name": "factorio", "role": "game", "ready": 0, "desired": 0, "min": 0, "max": 1, "state": "off", "err_ratio": null, "req_rate": null }
+          ],
+          "fleet": null
+        }
+      ],
+      "prs": []
+    },
+    {
+      "id": "minecraft",
+      "name": "Minecraft",
+      "kind": "server",
+      "url": null,
+      "repo": null,
+      "state": "up",
+      "servers": 1,
+      "envs": [
+        {
+          "id": "prod",
+          "name": "Production",
+          "ns": "default",
+          "url": null,
+          "state": "up",
+          "argo": { "app": "minecraft", "sync": "Synced", "health": "Healthy" },
+          "services": [
+            { "name": "minecraft", "role": "game", "ready": 1, "desired": 1, "min": 1, "max": 1, "state": "up", "err_ratio": null, "req_rate": null }
+          ],
+          "fleet": null
+        }
+      ],
+      "prs": []
+    },
+    {
+      "id": "teamspeak",
+      "name": "TeamSpeak",
+      "kind": "server",
+      "url": null,
+      "repo": null,
+      "state": "up",
+      "servers": 0,
+      "envs": [
+        {
+          "id": "prod",
+          "name": "Production",
+          "ns": "default",
+          "url": null,
+          "state": "up",
+          "argo": { "app": "teamspeak", "sync": "Synced", "health": "Healthy" },
+          "services": [
+            { "name": "teamspeak", "role": "voice", "ready": 1, "desired": 1, "min": 1, "max": 1, "state": "up", "err_ratio": null, "req_rate": null }
+          ],
+          "fleet": null
+        }
+      ],
+      "prs": []
+    },
+    {
+      "id": "openrct2",
+      "name": "OpenRCT2",
+      "kind": "server",
+      "url": null,
+      "repo": null,
+      "state": "off",
+      "servers": 0,
+      "envs": [
+        {
+          "id": "prod",
+          "name": "Production",
+          "ns": "default",
+          "url": null,
+          "state": "off",
+          "argo": { "app": "openrct2", "sync": "Synced", "health": "Healthy" },
+          "services": [
+            { "name": "openrct2", "role": "game", "ready": 0, "desired": 0, "min": 0, "max": 1, "state": "off", "err_ratio": null, "req_rate": null }
+          ],
+          "fleet": null
+        }
+      ],
+      "prs": []
+    },
+    {
+      "id": "pelican",
+      "name": "Pelican",
+      "kind": "server",
+      "url": "https://pelican.john2143.com",
+      "repo": null,
+      "state": "up",
+      "servers": 2,
+      "envs": [
+        {
+          "id": "prod",
+          "name": "Production",
+          "ns": "default",
+          "url": "https://pelican.john2143.com",
+          "state": "up",
+          "argo": { "app": "pelican", "sync": "Synced", "health": "Healthy" },
+          "services": [
+            { "name": "panel", "role": "panel", "ready": 1, "desired": 1, "min": 1, "max": 1, "state": "up", "err_ratio": 0.0, "req_rate": 0.1 },
+            { "name": "db", "role": "db", "ready": 2, "desired": 2, "min": null, "max": null, "state": "up", "err_ratio": null, "req_rate": null }
+          ],
+          "fleet": null
+        }
+      ],
+      "prs": []
+    }
+  ]
+}

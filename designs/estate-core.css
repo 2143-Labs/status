@@ -48,6 +48,8 @@ a{color:var(--accent)}
 .st-degraded{color:var(--warn)}.st-degraded::before{content:"!"}
 .st-down{color:var(--bad)}.st-down::before{content:"✕"}
 .st-unknown{color:var(--muted)}.st-unknown::before{content:"–"}
+.st-asleep{color:var(--info)}.st-asleep::before{content:"◾"}
+.st-off{color:var(--muted)}.st-off::before{content:"·"}
 
 @media (forced-colors:active){
   .scenario-bar,.mode-notice,.chip,.plain th,.plain td,[class*="card"],[class*="panel"]{border:1px solid CanvasText}

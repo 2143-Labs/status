@@ -34,7 +34,7 @@ class DesignBudgets(unittest.TestCase):
             self.assertLessEqual(p.stat().st_size, 150_000, p.name)
 
     def test_shared_files_under_budget(self):
-        for name, cap in (("estate-sim.js", 40_000), ("estate-core.js", 40_000), ("estate-core.css", 15_000)):
+        for name, cap in (("estate-sim.js", 40_000), ("estate-core.js", 40_000), ("games-core.js", 40_000), ("estate-core.css", 15_000)):
             self.assertLessEqual((DESIGNS / name).stat().st_size, cap, name)
 
     def test_configmap_total_under_900k(self):
@@ -42,9 +42,10 @@ class DesignBudgets(unittest.TestCase):
         self.assertLessEqual(sum(p.stat().st_size for p in served()), 900_000)
 
     def test_json_naming(self):
-        # designs/sample-*.json is fed to the v1 renderer by test_render.py
+        # designs/sample-*.json is fed to the v1 renderer by test_render.py;
+        # games-*.json is the games feed sample the games page falls back to.
         for p in DESIGNS.glob("*.json"):
-            self.assertTrue(p.name.startswith(("sample-", "estate-")), p.name)
+            self.assertTrue(p.name.startswith(("sample-", "estate-", "games-")), p.name)
 
     def test_no_public_ip(self):
         for p in served():
