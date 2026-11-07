@@ -54,13 +54,59 @@ load it by default and re-fetch it every 30 s; if it is missing they fall back t
 Only the `today` layout exists in real data, so Target needs `?source=sim`.
 Check it: `curl -s https://status.john2143.com/estate-live.json | jq .generated`.
 
+## Games feed
+
+`games.html` shows one card per 2143-Labs game: live state, each environment's
+services with ready/desired replicas (ROTS per microservice), and every open PR
+with its preview environment. A second sidecar, `games`, runs
+`scripts/games_snapshot.py` every 60 s and writes `/games-live.json` from three
+sources:
+
+- the home Mimir: replicas (kube-state-metrics), request and 5xx rates (Beyla),
+  preview namespaces, and ArgoCD sync/health (`argocd_app_info`, scraped by Alloy
+  in the `argo` repo);
+- the ROTS fleet summary, in-cluster at
+  `http://rots-authserver.rots-prod.svc/api/v1/fleet` (optional: the card falls
+  back to StatefulSet counts);
+- GitHub's open pull requests, with a read-only token mounted from Secret
+  `status-github`.
+
+The page re-fetches every 60 s. If the feed is missing it shows
+`games-sample.json` and says so; `?source=sample` forces the sample.
+
+Feed shape (v1): `{v, source, generated, interval_s, github: {ok, error}, games: [...]}`.
+Each game has `id, name, kind, url, repo, state, servers, envs, prs`; each env
+has `services` (`ready`, `desired`, `state`, `err_ratio`, `req_rate`), optional
+`argo` and `fleet`; each PR has `number, title, draft, url, updated, preview`.
+States are `up` (ready ≥ desired), `degraded` (some replicas missing, a 5xx ratio
+over 5 % with real traffic, or ArgoCD not Healthy), `down` (wanted but none
+ready), `asleep` (scaled to zero on purpose), `off` (0 replicas, not a
+scale-to-zero service) and `unknown` (no data).
+
+Add a game: an entry in `GAMES` in `scripts/games_snapshot.py`, plus the same id
+in `designs/games-sample.json` (a test checks they match). Private-repo PR titles
+are shown on purpose.
+
+The token is a fine-grained PAT (2143-Labs; Metadata and Pull requests read) at
+OpenBao `consumers` → `john2143-com/status-design/github-pr-reader`, key
+`token`. The chart renders the ExternalSecret only when `games.githubKey` is set,
+which the `argo` repo does for the gallery only; previews get no token and show
+PRs as unavailable. Creating and rotating it: `docs/games-tracker.md` in the
+`argo` repo. To force a refresh after rotating:
+`kubectl -n status-design annotate externalsecret status-github force-sync=$(date +%s) --overwrite`.
+The sidecar re-reads the token file on every run.
+
+Check it: `curl -s https://status.john2143.com/games-live.json | jq '.generated, .github'`.
+Failures only: `kubectl -n status-design logs deploy/status-design -c games`.
+
 ## Layout
 
 ```
 Chart.yaml            chart metadata
-values.yaml           namespace, host, route name, nginx image
-templates/            configmap · deployment · service · httproute · referencegrant
-designs/              the pages (index.html is the gallery)
+values.yaml           namespace, host, route name, nginx image, sidecar image, games feed
+templates/            configmap · deployment · service · httproute · referencegrant · github-token
+designs/              the pages (index.html is the gallery; games.html + games-core.js + games-sample.json)
+scripts/              estate_snapshot.py (live sidecar), games_snapshot.py (games sidecar)
 ```
 
 How production runs (endpoints, deploys, rollback, where the history lives):
