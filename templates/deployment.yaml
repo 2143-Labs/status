@@ -17,7 +17,7 @@ spec:
         app: status-design
       annotations:
         # Rolls the pod when any design changes; the ConfigMap name is stable.
-        checksum/designs: {{ printf "%s%s%s" (.Files.Glob "designs/*.html").AsConfig (.Files.Get "files/nginx.conf") (.Files.Get "scripts/estate_snapshot.py") | sha256sum | quote }}
+        checksum/designs: {{ printf "%s%s%s%s" (.Files.Glob "designs/*.html").AsConfig (.Files.Get "files/nginx.conf") (.Files.Get "scripts/estate_snapshot.py") (.Files.Get "scripts/games_snapshot.py") | sha256sum | quote }}
     spec:
       affinity:
         nodeAffinity:
@@ -119,9 +119,52 @@ spec:
             runAsUser: 65534
             seccompProfile:
               type: RuntimeDefault
+        # Rebuilds /games-live.json from the home Mimir, the ROTS fleet endpoint and
+        # GitHub every games.intervalSeconds. No token ⇒ PRs report as unavailable.
+        - name: games
+          image: "{{ .Values.live.image }}"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            - name: GITHUB_TOKEN_FILE
+              value: /etc/status-github/token
+          command: ["sh", "-c"]
+          args:
+            - |
+              while :; do
+                if python3 -B /app/scripts/games_snapshot.py > /data/.games-live.json.tmp; then
+                  mv /data/.games-live.json.tmp /data/games-live.json
+                fi
+                sleep {{ .Values.games.intervalSeconds }}
+              done
+          volumeMounts:
+            - name: live
+              mountPath: /data
+            - name: live-script
+              mountPath: /app/scripts
+              readOnly: true
+            - name: github-token
+              mountPath: /etc/status-github
+              readOnly: true
+          resources:
+{{ toYaml .Values.games.resources | indent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
         - name: live
           emptyDir: {}
+        - name: github-token
+          secret:
+            secretName: status-github
+            optional: true
         - name: live-script
           configMap:
             name: status-design-live
