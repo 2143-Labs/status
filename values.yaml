@@ -21,9 +21,11 @@ resources:
     cpu: 100m
     memory: 64Mi
 
-# Sidecar that rebuilds /estate-live.json from status.json and the home Mimir.
+# Sidecars: `live` rebuilds /estate-live.json from status.json and the home
+# Mimir; `games` rebuilds /games-live.json from Mimir, ROTS and GitHub. Both run
+# this image.
 live:
-  image: python:3.12-alpine
+  image: python:3.14-alpine
   intervalSeconds: 30
   resources:
     requests:
