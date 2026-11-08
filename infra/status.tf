@@ -1,14 +1,10 @@
-# status.2143.me. Adopted as-is (a CNAME to the home edge) so the next change can
-# repoint it at the droplet in one apply. See docs/runbook.md "Cutover".
-import {
-  to = desec_rrset.status
-  id = "2143.me/status/CNAME"
-}
-
+# status.2143.me -> the droplet's reserved IP. One resource, because changing
+# `type` forces a replacement: OpenTofu deletes the CNAME before creating the A,
+# which is the only order deSEC accepts.
 resource "desec_rrset" "status" {
   domain  = "2143.me"
   subname = "status"
-  type    = "CNAME"
+  type    = "A"
   ttl     = 3600
-  rdata   = ["john2143.com."]
+  rdata   = [digitalocean_reserved_ip.status.ip_address]
 }

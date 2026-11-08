@@ -80,7 +80,7 @@ jobs:
           WANT: ${{ github.sha }}
         run: |
           for i in $(seq 90); do
-            body=$(curl -fsS --max-time 5 https://status-origin.2143.me/healthz || true)
+            body=$(curl -fsS --max-time 5 https://status.2143.me/healthz || true)
             got=$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build_sha",""))' 2>/dev/null || true)
             [ "$got" = "$WANT" ] && { echo "serving $WANT"; exit 0; }
             sleep 10
