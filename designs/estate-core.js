@@ -131,11 +131,11 @@ export function esc(s) {
 }
 
 export function stateWord(s) {
-  return { up: "Up", degraded: "Slow", down: "Down" }[s] || "Not reporting";
+  return { up: "Up", degraded: "Slow", down: "Down", asleep: "Asleep", off: "Off" }[s] || "Not reporting";
 }
 
 export function stateBadge(s) {
-  const k = ["up", "degraded", "down"].includes(s) ? s : "unknown";
+  const k = ["up", "degraded", "down", "asleep", "off"].includes(s) ? s : "unknown";
   return `<span class="st st-${k}">${stateWord(s)}</span>`;
 }
 

@@ -21,9 +21,11 @@ resources:
     cpu: 100m
     memory: 64Mi
 
-# Sidecar that rebuilds /estate-live.json from status.json and the home Mimir.
+# Sidecars: `live` rebuilds /estate-live.json from status.json and the home
+# Mimir; `games` rebuilds /games-live.json from Mimir, ROTS and GitHub. Both run
+# this image.
 live:
-  image: python:3.12-alpine
+  image: python:3.14-alpine
   intervalSeconds: 30
   resources:
     requests:
@@ -32,3 +34,13 @@ live:
     limits:
       cpu: 200m
       memory: 128Mi
+
+games:
+  intervalSeconds: 60
+  # OpenBao key holding the read-only GitHub PAT. Empty = no ExternalSecret is
+  # rendered, no token is mounted, and the page shows PR data as unavailable
+  # (that is what every status-pr-<N> preview gets).
+  githubKey: ""
+  resources:
+    requests: {cpu: 5m, memory: 32Mi}
+    limits: {cpu: 200m, memory: 128Mi}

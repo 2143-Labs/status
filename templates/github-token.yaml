@@ -1,0 +1,26 @@
+{{- /* Read-only GitHub PAT the `games` sidecar uses for PR data. The OpenBao key
+       comes from the status-design Application's games.githubKey parameter; every
+       status-pr-<N> preview leaves it empty, so no ExternalSecret is rendered
+       there and the page shows PR data as unavailable. */}}
+{{- with .Values.games.githubKey }}
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: status-github
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app: status-design
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: openbao
+    kind: ClusterSecretStore
+  target:
+    name: status-github
+    creationPolicy: Owner
+  data:
+    - secretKey: token
+      remoteRef:
+        key: {{ . }}
+        property: token
+{{- end }}

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Games &amp; pull requests — 2143 Labs status</title>
+<link rel="stylesheet" href="estate-core.css">
+<style>
+main{max-width:64rem;margin:0 auto;padding:1.6rem 1.4rem 4rem}
+h1{font-size:1.6rem;margin:0 0 .2rem}
+.lede{color:var(--muted);font-size:.92rem;margin:.1rem 0 .5rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(21rem,1fr));gap:1rem;margin:1.4rem 0 0}
+.card{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:.7rem .9rem}
+.card h2{font-size:1.05rem;line-height:1.3;margin:0 0 .15rem;display:flex;flex-wrap:wrap;gap:.5rem;align-items:baseline}
+.card h2 a{text-decoration:none}
+.card .sub{display:block;color:var(--muted);font-size:.78rem;font-weight:400}
+.card table{width:100%;border-collapse:collapse;font-size:.86rem;margin:.35rem 0 0}
+.card caption{text-align:left;color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;padding:0 0 .15rem}
+.card th,.card td{text-align:left;padding:.22rem .3rem .22rem 0;border-bottom:1px solid var(--line);vertical-align:top}
+.card thead th{color:var(--muted);font-weight:500;font-size:.75rem;white-space:nowrap}
+.card tbody th{font-weight:600}
+.card tbody tr:last-child th,.card tbody tr:last-child td{border-bottom:0}
+.card .fleet{margin:.45rem 0 0;font-size:.8rem;color:var(--muted)}
+.prs{list-style:none;margin:.55rem 0 0;padding:0;display:grid;gap:.2rem;font-size:.85rem}
+.prs li{padding:.1rem 0}
+.prs .sub{display:inline}
+.card .plain-note{margin:.55rem 0 0;font-size:.85rem}
+</style>
+</head>
+<body>
+<p id="notice" class="mode-notice" hidden></p>
+<main>
+  <h1>Games &amp; pull requests</h1>
+  <p class="lede">Live state of every 2143 Labs game, each environment's services, and every open pull request with its preview environment. <a href="index.html">Back to the gallery</a>.</p>
+  <div id="cards" class="cards" aria-live="polite" aria-busy="true"></div>
+  <section id="plain" class="plain" aria-labelledby="plain-h"><h2 id="plain-h">All games as tables</h2></section>
+  <noscript><p>This page needs JavaScript for the cards. The committed sample is <a href="games-sample.json">games-sample.json</a>; the live feed is <a href="games-live.json">games-live.json</a>.</p></noscript>
+</main>
+<script type="module">
+import { load } from "./games-core.js";
+
+const cards = document.getElementById("cards");
+const plain = document.getElementById("plain");
+const banner = document.getElementById("notice");
+
+load({ cards, plain, banner })
+  .catch((err) => {
+    banner.textContent = `tracker unavailable: ${err.message}`;
+    banner.hidden = false;
+  })
+  .finally(() => cards.removeAttribute("aria-busy"));
+</script>
+</body>
+</html>
