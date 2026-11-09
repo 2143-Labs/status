@@ -51,4 +51,4 @@ data. Never commit that file.
   workflow runs on every push to `main`, and the droplet pulls within 60 s. See [runbook.md](runbook.md).
   A preview does **not** exercise these; only CI covers them (`test`, `caddy`, `scripts`, `tofu-validate`).
 - Check the gallery: `curl -s https://status.john2143.com/estate-live.json | jq .source` → `"live"`.
-- Check production: `curl -s https://status-origin.2143.me/healthz | jq -r .build_sha` → the merge commit.
+- Check production: `curl -s https://status.2143.me/healthz | jq -r .build_sha` → the merge commit.
