@@ -1,8 +1,10 @@
 # Runbook — status.2143.me
 
 `status.2143.me` runs on its own DigitalOcean droplet (`tor1`, `s-1vcpu-512mb-10gb`,
-reserved IP). It is the only name on it: `status-origin.2143.me` and its deSEC record were
-removed on 2026-11-09, so one origin holds exactly one public name. Nothing in the home
+reserved IP). It is the only name on it: `status-origin.2143.me`'s A record was removed on
+2026-11-09. That name still resolves — the zone's `*.2143.me` wildcard answers for every unlisted
+subdomain — but it reaches the edge at `2143.me`, not this droplet, and no listener holds a
+certificate for it, so the handshake fails and nothing is served. Nothing in the home
 cluster serves or forwards this name — the home HTTPRoute, its Anubis instance and pite's
 generator are gone — so there is no home fallback to roll back to. A DNS or
 `infra/status.tf` mistake is fixed forward on `main`; the deploy workflow applies it.
