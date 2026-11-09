@@ -1,8 +1,13 @@
 // games-core.js — plumbing for designs/games.html.
 // Data comes from games-live.json (the v1 feed written by scripts/games_snapshot.py
-// every 60 s) or games-sample.json (committed sample, also forced by ?source=sample).
+// every `interval_s` seconds — 3 s today) or games-sample.json (committed sample,
+// also forced by ?source=sample).
 // Nothing here touches the DOM at import time, so this module loads under Node for tests.
 const DEFAULT_INTERVAL_S = 60;
+// The feed carries its own cadence; the page follows it, clamped so a broken or
+// absurd interval_s cannot turn into a request storm or a frozen page.
+const POLL_MIN_S = 1;
+const POLL_MAX_S = 30;
 const STATES = ["up", "degraded", "down", "asleep", "off"];
 const LABELS = { up: "Up", degraded: "Slow", down: "Down", asleep: "Asleep", off: "Off" };
 
@@ -13,6 +18,11 @@ export function esc(s) {
 // Only https links are rendered: a feed string never selects a scheme of its own.
 export function safeHref(u) {
   return typeof u === "string" && u.startsWith("https://") ? u : null;
+}
+
+export function pollSecs(doc) {
+  const raw = doc && Number.isFinite(doc.interval_s) && doc.interval_s > 0 ? doc.interval_s : DEFAULT_INTERVAL_S;
+  return Math.min(POLL_MAX_S, Math.max(POLL_MIN_S, Math.floor(raw)));
 }
 
 export function stateLabel(s) {
@@ -113,7 +123,8 @@ export function viewModel(doc) {
   return {
     generated,
     ageS,
-    stale: ageS == null ? true : ageS > interval * 3,
+    // A 3 s feed would otherwise call itself stale after a single slow run.
+    stale: ageS == null ? true : ageS > Math.max(interval * 3, 15),
     githubOk: !!(d.github && d.github.ok === true),
     githubError: d.github && typeof d.github.error === "string" ? d.github.error : null,
     source: d.source || "live",
@@ -202,6 +213,15 @@ export function render(doc, els) {
       : '<p class="sub">The feed lists no games.</p>';
   }
   if (els.plain) els.plain.innerHTML = plainHtml(vm);
+  if (els.asof) {
+    // The committed sample's `generated` is frozen at build time, so an age line
+    // would call it stale forever; name the source instead.
+    els.asof.textContent = vm.source === "sample"
+      ? "committed sample — not live data"
+      : vm.ageS == null
+        ? (vm.stale ? "feed is stale" : "")
+        : `${vm.stale ? "feed is stale — last update" : "updated"} ${vm.ageS}s ago`;
+  }
   return vm;
 }
 
@@ -250,12 +270,17 @@ export async function load(els) {
       }
     }
   };
-  await tick();
-  setInterval(() => {
-    if (!document.hidden) tick();
-  }, DEFAULT_INTERVAL_S * 1000);
+  let timer = null;
+  const loop = async () => {
+    if (!document.hidden) await tick();
+    timer = setTimeout(loop, pollSecs(last) * 1000);
+  };
+  await loop();
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) tick();
+    if (!document.hidden) {
+      clearTimeout(timer);
+      loop();
+    }
   });
   return { doc: () => last };
 }

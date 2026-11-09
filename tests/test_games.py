@@ -131,7 +131,7 @@ class Registry(unittest.TestCase):
         self.assertEqual([g["id"] for g in self.doc["games"]], IDS)
         self.assertEqual(self.doc["v"], 1)
         self.assertEqual(self.doc["source"], "live")
-        self.assertEqual(self.doc["interval_s"], 60)
+        self.assertEqual(self.doc["interval_s"], 3)
         self.assertEqual(len({g["id"] for g in self.doc["games"]}), len(IDS))
 
     def test_repos_and_urls(self):

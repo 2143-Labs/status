@@ -59,7 +59,7 @@ Check it: `curl -s https://status.john2143.com/estate-live.json | jq .generated`
 `games.html` shows one card per 2143-Labs game: live state, each environment's
 services with ready/desired replicas (ROTS per microservice), and every open PR
 with its preview environment. A second sidecar, `games`, runs
-`scripts/games_snapshot.py` every 60 s and writes `/games-live.json` from three
+`scripts/games_snapshot.py` every 3 s and writes `/games-live.json` from three
 sources:
 
 - the home Mimir: replicas (kube-state-metrics), request and 5xx rates (Beyla),
@@ -71,7 +71,7 @@ sources:
 - GitHub's open pull requests, with a read-only token mounted from Secret
   `status-github`.
 
-The page re-fetches every 60 s. If the feed is missing it shows
+The page re-fetches on the feed's `interval_s` (3 s today). If the feed is missing it shows
 `games-sample.json` and says so; `?source=sample` forces the sample.
 
 Feed shape (v1): `{v, source, generated, interval_s, github: {ok, error}, games: [...]}`.
