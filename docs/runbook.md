@@ -1,10 +1,12 @@
 # Runbook — status.2143.me
 
 `status.2143.me` runs on its own DigitalOcean droplet (`tor1`, `s-1vcpu-512mb-10gb`,
-reserved IP). `status-origin.2143.me` resolves to the same reserved IP; both names are
-served by the same Caddy site, and `status-origin` is kept as the origin name. The
-home route (argo `workloads/gateway/status-route.yaml`) still exists as the rollback
-path until it is retired. There is no SSH: incoming port 22 is not in the firewall at all.
+reserved IP). It is the only name on it: `status-origin.2143.me` and its deSEC record were
+removed on 2026-11-09, so one origin holds exactly one public name. Nothing in the home
+cluster serves or forwards this name — the home HTTPRoute, its Anubis instance and pite's
+generator are gone — so there is no home fallback to roll back to. A DNS or
+`infra/status.tf` mistake is fixed forward on `main`; the deploy workflow applies it.
+There is no SSH: incoming port 22 is not in the firewall at all.
 
 ## What runs where
 
@@ -103,7 +105,7 @@ picks them up.
 
 ## When the page is red
 
-`curl -sS https://status-origin.2143.me/healthz` first:
+`curl -sS https://status.2143.me/healthz` first:
 
 - `"ok": false`, `sample_age_s` null or large → probes are not running: check
   `deploy_error`, then the `probe` loop in the journal (below).

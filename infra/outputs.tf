@@ -1,5 +1,5 @@
 output "ipv4" {
-  description = "Reserved IP: the address status-origin (and later status) resolve to."
+  description = "Reserved IP: the address status.2143.me resolves to."
   value       = digitalocean_reserved_ip.status.ip_address
 }
 
