@@ -21,7 +21,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-STATUS = os.environ.get("STATUS_URL", "https://status-origin.2143.me/status.json")
+STATUS = os.environ.get("STATUS_URL", "https://status.2143.me/status.json")
 MIMIR = os.environ.get("MIMIR_URL", "http://192.168.6.23:8080/prometheus/api/v1/query")
 HOUSE = ["closet", "arch", "nas", "big", "office", "pite"]
 NODE_META = {  # site, role, arch, lan_ip
