@@ -33,6 +33,7 @@ h1{font-size:1.6rem;margin:0 0 .2rem}
 <main>
   <h1>Games &amp; pull requests</h1>
   <p class="lede">Live state of every 2143 Labs game, each environment's services, and every open pull request with its preview environment. <a href="index.html">Back to the gallery</a>.</p>
+  <p id="asof" class="lede" aria-live="off"></p>
   <div id="cards" class="cards" aria-live="polite" aria-busy="true"></div>
   <section id="plain" class="plain" aria-labelledby="plain-h"><h2 id="plain-h">All games as tables</h2></section>
   <noscript><p>This page needs JavaScript for the cards. The committed sample is <a href="games-sample.json">games-sample.json</a>; the live feed is <a href="games-live.json">games-live.json</a>.</p></noscript>
@@ -43,8 +44,9 @@ import { load } from "./games-core.js";
 const cards = document.getElementById("cards");
 const plain = document.getElementById("plain");
 const banner = document.getElementById("notice");
+const asof = document.getElementById("asof");
 
-load({ cards, plain, banner })
+load({ cards, plain, banner, asof })
   .catch((err) => {
     banner.textContent = `tracker unavailable: ${err.message}`;
     banner.hidden = false;

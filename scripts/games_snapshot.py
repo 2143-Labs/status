@@ -6,7 +6,7 @@
 One line of JSON on stdout: ten instant Mimir queries (replica counts, Beyla
 request/5xx rates, namespace phases, ArgoCD application health), the in-cluster
 ROTS fleet summary and GitHub's open pull requests per game repo. The `games`
-container in the status chart runs this every 60 s and mirrors the file to
+container in the status chart runs this every 3 s and mirrors the file to
 /games-live.json; designs/games.html renders it. stdlib only.
 
 Importing this module does no I/O: the registry is data, every network call is
@@ -32,7 +32,12 @@ MIMIR = os.environ.get("MIMIR_URL", "http://192.168.6.23:8080/prometheus/api/v1/
 GITHUB = os.environ.get("GITHUB_API", "https://api.github.com")
 TOKEN_FILE = os.environ.get("GITHUB_TOKEN_FILE")
 FLEET_URL = os.environ.get("ROTS_FLEET_URL", "http://rots-authserver.rots-prod.svc/api/v1/fleet")
-INTERVAL_S = 60
+INTERVAL_S = 3
+# GitHub's PAT allows 5,000 requests/hour and one run makes one call per repo. At a
+# 3 s feed that is 6,000/hour, so the PR answer is reused for PR_CACHE_S and only
+# refetched when it is stale.
+PR_CACHE_S = 30
+PR_CACHE = Path(os.environ.get("PR_CACHE_FILE", "/data/.games-prs.json"))
 QUAD = re.compile(r"(?<![\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.-])")
 # Always-on edge pods in every hosted-game namespace; counting them would make
 # every preview look healthy.
@@ -420,6 +425,25 @@ def github_prs(token, registry=None):
     return out, ("; ".join(errors) or None)
 
 
+def cached_prs(token):
+    """PRs at most once per PR_CACHE_S; the cache is advisory and never fatal."""
+    if token is None:
+        return {}, "no token"
+    try:
+        cached = json.loads(PR_CACHE.read_text(encoding="utf-8"))
+        if time.time() - float(cached.get("at", 0)) < PR_CACHE_S:
+            return cached.get("prs") or {}, cached.get("error")
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass  # missing, unreadable or from an older shape: refetch
+    prs, error = github_prs(token)
+    try:
+        PR_CACHE.write_text(json.dumps({"at": int(time.time()), "prs": prs, "error": error}),
+                            encoding="utf-8")
+    except OSError as exc:
+        print(f"games_snapshot: pr cache: {exc}", file=sys.stderr)
+    return prs, error
+
+
 def fetch_fleet(url):
     """Counts only; an unreachable authserver is advisory (sts count is the truth)."""
     try:
@@ -436,14 +460,10 @@ def main():
         print(f"games_snapshot: mimir: {exc}", file=sys.stderr)
         return 2
 
-    token = read_token()
-    if token is None:
-        prs, github_error = {}, "no token"
-    else:
-        try:
-            prs, github_error = github_prs(token)
-        except Exception as exc:  # never abort the feed on GitHub
-            prs, github_error = {}, f"github: {exc}"
+    try:
+        prs, github_error = cached_prs(read_token())
+    except Exception as exc:  # never abort the feed on GitHub
+        prs, github_error = {}, f"github: {exc}"
 
     fleets = {}
     for g in GAMES:

@@ -36,11 +36,11 @@ live:
       memory: 128Mi
 
 games:
-  intervalSeconds: 60
+  intervalSeconds: 3
   # OpenBao key holding the read-only GitHub PAT. Empty = no ExternalSecret is
   # rendered, no token is mounted, and the page shows PR data as unavailable
   # (that is what every status-pr-<N> preview gets).
   githubKey: ""
   resources:
-    requests: {cpu: 5m, memory: 32Mi}
-    limits: {cpu: 200m, memory: 128Mi}
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {cpu: 500m, memory: 128Mi}

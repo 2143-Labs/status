@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { viewModel, stateLabel, safeHref } from "../../designs/games-core.js";
+import { viewModel, stateLabel, safeHref, pollSecs, render } from "../../designs/games-core.js";
 
 const sample = JSON.parse(readFileSync(new URL("../../designs/games-sample.json", import.meta.url), "utf8"));
 const IDS = ["rots", "dino", "moss", "steam-lobby", "how-poe-sale", "factorio", "minecraft", "teamspeak", "openrct2", "pelican"];
@@ -132,4 +132,31 @@ test("staleness follows 3x the interval", () => {
   assert.equal(viewModel(doc(120)).stale, false);
   assert.equal(viewModel(doc(240)).stale, true);
   assert.equal(viewModel({ v: 1, games: [] }).stale, true);
+});
+
+test("poll cadence follows the feed and stays in bounds", () => {
+  assert.equal(pollSecs({ interval_s: 3 }), 3);
+  // No usable interval_s falls back to DEFAULT_INTERVAL_S, which the ceiling clamps.
+  assert.equal(pollSecs({ interval_s: 0 }), 30);
+  assert.equal(pollSecs({}), 30);
+  assert.equal(pollSecs({ interval_s: 0.4 }), 1);
+  assert.equal(pollSecs({ interval_s: 600 }), 30);
+});
+
+test("a fresh feed is not called stale, and the age line reports it", () => {
+  const now = Math.floor(Date.now() / 1000);
+  const doc = { v: 1, source: "live", generated: now - 4, interval_s: 3, github: { ok: true, error: null }, games: [] };
+  assert.equal(viewModel(doc).stale, false);
+  const els = { asof: { textContent: "" } };
+  render(doc, els);
+  assert.match(els.asof.textContent, /updated \d+s ago/);
+  const old = { ...doc, generated: now - 40 };
+  render(old, { asof: els.asof });
+  assert.match(els.asof.textContent, /stale/);
+});
+
+test("the committed sample names itself instead of a frozen age", () => {
+  const els = { asof: { textContent: "" } };
+  render(sample, els);
+  assert.match(els.asof.textContent, /committed sample/);
 });
