@@ -6,6 +6,20 @@ on:
 permissions:
   contents: read
 jobs:
+  # Branch protection on main requires a check whose context is exactly `test`, and a matrix
+  # job reports `test (3.12)` / `test (3.14)` instead, so nothing could ever satisfy it and every
+  # PR needed an admin merge. This gate carries the required name and fails if either matrix leg
+  # failed, so protection means something again.
+  test-result:
+    name: test
+    needs: test
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: matrix result
+        run: |
+          echo "test matrix: ${{ needs.test.result }}"
+          test "${{ needs.test.result }}" = "success"
   test:
     runs-on: ubuntu-24.04
     # 3.12 is the droplet's statusd interpreter (Ubuntu 24.04 /usr/bin/python3,
