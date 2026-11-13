@@ -77,16 +77,16 @@ footer{margin-top:3rem;border-top:1px solid var(--line);padding-top:.8rem;color:
 <body>
 <main>
   <h1>2143 Labs Status</h1>
-  <p class="meta">Design preview · sample data · 2026-10-19 11:20 UTC · monitors: status host (planned) and pite</p>
+  <p class="meta">Design preview · sample probe data · 2026-10-19, edge state 2026-11-13 · monitors: status host (planned) and pite</p>
 
   <div class="callout ok">
     <p><strong>All monitored services are operational.</strong> One maintenance window in the last 30 days.
-    <span class="pill muted">edges: planned</span></p>
+    <span class="pill ok">edges: 2 live · TURN</span></p>
   </div>
 
   <figure>
     <svg class="diagram" viewBox="0 0 1000 580" role="img"
-         aria-label="Monitoring map: the status host probes public services every 30 seconds and stores history in SQLite; pite reports home cluster state to it every 30 seconds; edge slots are planned and will front home services with WireGuard.">
+         aria-label="Monitoring map: the status host probes public services every 30 seconds and stores history in SQLite; pite reports home cluster state to it every 30 seconds; two edge slots are live and carry Matrix TURN.">
       <defs>
         <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
           <path d="M0,0 L10,5 L0,10 z" class="arrowhead"/>
@@ -143,16 +143,16 @@ footer{margin-top:3rem;border-top:1px solid var(--line);padding-top:.8rem;color:
 
       <path d="M340,200 L376,200" class="wire" marker-end="url(#arr)"/>
 
-      <!-- edges, planned -->
-      <rect x="736" y="96" width="224" height="214" rx="10" class="box planned"/>
+      <!-- edges, live -->
+      <rect x="736" y="96" width="224" height="214" rx="10" class="box"/>
       <text x="752" y="120" class="title">Edge slots</text>
-      <text x="752" y="138" class="plan">◌ planned · not deployed</text>
-      <rect x="750" y="148" width="196" height="38" rx="8" class="box planned"/>
-      <text x="762" y="165">s1 · Hetzner</text>
-      <text x="762" y="180" class="plan">◌ planned</text>
-      <rect x="750" y="192" width="196" height="38" rx="8" class="box planned"/>
-      <text x="762" y="209">s2 · DigitalOcean</text>
-      <text x="762" y="224" class="plan">◌ planned</text>
+      <text x="752" y="138" class="ok">✓ 2 live · TURN + STUN</text>
+      <rect x="750" y="148" width="196" height="38" rx="8" class="box"/>
+      <text x="762" y="165">s1 · Linode</text>
+      <text x="762" y="180" class="ok">✓ up</text>
+      <rect x="750" y="192" width="196" height="38" rx="8" class="box"/>
+      <text x="762" y="209">s2 · Hetzner</text>
+      <text x="762" y="224" class="ok">✓ up</text>
       <text x="752" y="256" class="muted">L4 passthrough · TLS at home</text>
       <text x="752" y="273" class="muted">no DNS record points home</text>
       <path d="M736,172 L704,172" class="wg" stroke-dasharray="4 4" marker-end="url(#arrwg)"/>
@@ -196,7 +196,7 @@ footer{margin-top:3rem;border-top:1px solid var(--line);padding-top:.8rem;color:
       <div class="card"><h4>Home apps <span class="pill ok">✓ up</span></h4><p>john2143.com · files · images · au · chat · tasks · llm · mail</p></div>
       <div class="card"><h4>DigitalOcean apps <span class="pill ok">✓ up</span></h4><p>2143.me · i.2143.me · labs · openfront</p></div>
       <div class="card"><h4>Client sites <span class="pill ok">✓ up</span></h4><p>aross.studio · balabusta.homes · chess · anni · mm.b</p></div>
-      <div class="card planned"><h4>Edge slots <span class="pill muted">◌ planned</span></h4><p>s1 Hetzner · s2 DigitalOcean · L4 passthrough, TLS at home</p></div>
+      <div class="card"><h4>Edge slots <span class="pill ok">✓ 2 live</span></h4><p>s1 Linode · s2 Hetzner · L4 passthrough · carrying Matrix TURN</p></div>
       <div class="card home"><h4>home k3s</h4><p>pite reports every 30 s · 6/6 nodes Ready · pods healthy · 0 alerts</p><p>No inbound from the internet · no DNS record points here</p></div>
     </div>
 
@@ -212,7 +212,7 @@ footer{margin-top:3rem;border-top:1px solid var(--line);padding-top:.8rem;color:
     </div>
     <figcaption>The status host is the only off-house thing here. It probes every public name from
       outside and keeps the history; pite pushes home state to it, so a home outage shows as
-      “not reporting” instead of a false green. Edge slots are the target design, not deployed.</figcaption>
+      “not reporting” instead of a false green. Two edge slots are live and carry Matrix TURN; no website resolves to one yet.</figcaption>
   </figure>
 
   <h2>Components</h2>
@@ -232,8 +232,8 @@ footer{margin-top:3rem;border-top:1px solid var(--line);padding-top:.8rem;color:
         <td><div class="strip"></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
       <tr><td>Home cluster</td><td><span class="pill ok">✓ up</span></td><td class="num">100 %</td><td class="num">100 %</td><td class="num">100 %</td>
         <td><div class="strip"><i class="day warn" style="left:6.8%"></i></div><div class="axis"><span>90 d ago</span><span>today</span></div></td></tr>
-      <tr><td>Edge slots s1 · s2</td><td><span class="pill muted">◌ planned</span></td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
-        <td><div class="strip" style="opacity:.25"></div><div class="axis"><span>not deployed</span><span></span></div></td></tr>
+      <tr><td>Edge slots s1 · s2</td><td><span class="pill ok">✓ up</span></td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+        <td><div class="strip" style="opacity:.25"></div><div class="axis"><span>live since 2026-11-13 · no history yet</span><span></span></div></td></tr>
     </tbody>
   </table>
   </div>
@@ -247,7 +247,7 @@ footer{margin-top:3rem;border-top:1px solid var(--line);padding-top:.8rem;color:
       <tr><td>Home stops reporting</td><td>shows “not reporting” within 3 min, page stays up</td><td><span class="pill ok">✓ 2 m 10 s</span></td><td class="num">2026-10-18</td></tr>
       <tr><td>Restore history from snapshot</td><td>lose at most one day</td><td><span class="pill ok">✓ 24 h</span></td><td class="num">2026-10-18</td></tr>
       <tr><td>TLS renewal</td><td>no lapse</td><td><span class="pill ok">✓ 62 d left</span></td><td class="num">2026-10-19</td></tr>
-      <tr><td>Edge slot destroyed</td><td>0 failed requests with two live</td><td><span class="pill muted">◌ no edges yet</span></td><td class="num">—</td></tr>
+      <tr><td>Edge slot destroyed</td><td>0 failed requests with two live</td><td><span class="pill muted">◌ not drilled yet</span></td><td class="num">—</td></tr>
     </tbody>
   </table>
   </div>
